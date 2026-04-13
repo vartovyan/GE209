@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Adaptive GE History Quiz with spaced repetition">
+<title>Quizzer — Adaptive Quiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg-deep:#0a0e1a;
+  --bg-mid:#111827;
+  --glass:rgba(255,255,255,.05);
+  --glass-border:rgba(255,255,255,.08);
+  --glass-hover:rgba(255,255,255,.1);
+  --accent:#818cf8;
+  --accent-glow:rgba(129,140,248,.35);
+  --correct:#34d399;
+  --correct-glow:rgba(52,211,153,.3);
+  --wrong:#f87171;
+  --wrong-glow:rgba(248,113,113,.3);
+  --text:#e2e8f0;
+  --text-dim:#94a3b8;
+  --text-bright:#f8fafc;
+  --radius:16px;
+  --radius-sm:10px;
+  --transition:.25s cubic-bezier(.4,0,.2,1);
+}
+html{font-size:16px}
+body{
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg-deep);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── Animated BG ──────────────────────────────────────────────────────── */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%,rgba(99,102,241,.12),transparent),
+    radial-gradient(ellipse 60% 50% at 80% 80%,rgba(168,85,247,.10),transparent),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(14,165,233,.06),transparent);
+  pointer-events:none;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+#app{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:24px 20px 60px}
+
+/* ── Glass Card ───────────────────────────────────────────────────────── */
+.glass{
+  background:var(--glass);
+  backdrop-filter:blur(16px) saturate(1.4);
+  -webkit-backdrop-filter:blur(16px) saturate(1.4);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.header{text-align:center;padding:36px 0 28px}
+.header h1{
+  font-size:2.4rem;font-weight:900;letter-spacing:-.03em;
+  background:linear-gradient(135deg,#818cf8,#a78bfa,#c084fc);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.header p{color:var(--text-dim);margin-top:6px;font-size:.95rem}
+
+/* ── Home Grid ────────────────────────────────────────────────────────── */
+.home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-top:8px}
+.quiz-card{
+  padding:28px 24px;cursor:pointer;position:relative;overflow:hidden;
+  transition:transform var(--transition),box-shadow var(--transition),background var(--transition);
+}
+.quiz-card:hover{
+  transform:translateY(-4px);
+  background:var(--glass-hover);
+  box-shadow:0 8px 32px rgba(129,140,248,.12);
+}
+.quiz-card .card-num{
+  font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--accent);margin-bottom:8px;
+}
+.quiz-card .card-title{font-size:1.15rem;font-weight:700;color:var(--text-bright)}
+.quiz-card .card-sub{font-size:.82rem;color:var(--text-dim);margin-top:6px}
+.quiz-card .card-mastery{
+  margin-top:14px;font-size:.78rem;font-weight:600;
+  display:flex;align-items:center;gap:6px;color:var(--correct);
+}
+.mastery-bar{
+  flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;
+}
+.mastery-bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--correct),#6ee7b7);transition:width .5s ease}
+
+/* ── Stats button ─────────────────────────────────────────────────────── */
+.stats-toggle{
+  display:inline-flex;align-items:center;gap:8px;
+  margin-top:24px;padding:10px 22px;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);
+  color:var(--text-dim);font-size:.88rem;font-weight:600;cursor:pointer;
+  transition:all var(--transition);
+}
+.stats-toggle:hover{color:var(--text-bright);background:var(--glass-hover)}
+
+/* ── Quiz Screen ──────────────────────────────────────────────────────── */
+.quiz-screen{display:none;animation:fadeUp .4s ease}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+.top-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:20px;flex-wrap:wrap;gap:12px;
+}
+.back-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;font-size:.82rem;font-weight:600;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);
+  color:var(--text-dim);cursor:pointer;transition:all var(--transition);
+}
+.back-btn:hover{color:var(--text-bright);background:var(--glass-hover)}
+
+.streak-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 14px;border-radius:20px;font-size:.82rem;font-weight:700;
+  background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(245,158,11,.08));
+  border:1px solid rgba(251,191,36,.2);color:#fbbf24;
+}
+
+.progress-wrap{
+  width:100%;height:5px;border-radius:5px;background:rgba(255,255,255,.06);
+  margin-bottom:24px;overflow:hidden;
+}
+.progress-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),#a78bfa);transition:width .4s ease}
+
+/* ── Question Card ────────────────────────────────────────────────────── */
+.question-card{padding:32px 28px;margin-bottom:20px}
+.q-counter{font-size:.78rem;font-weight:600;color:var(--accent);margin-bottom:12px}
+.q-text{font-size:1.12rem;font-weight:600;line-height:1.6;color:var(--text-bright)}
+
+/* ── Choices ──────────────────────────────────────────────────────────── */
+.choices{display:flex;flex-direction:column;gap:10px;margin-bottom:20px}
+.choice-btn{
+  display:flex;align-items:flex-start;gap:12px;
+  width:100%;padding:16px 20px;text-align:left;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-sm);
+  color:var(--text);font-size:.95rem;font-weight:500;line-height:1.5;
+  cursor:pointer;transition:all var(--transition);position:relative;overflow:hidden;
+}
+.choice-btn:hover:not(.disabled){background:var(--glass-hover);border-color:rgba(255,255,255,.15)}
+.choice-btn .letter{
+  flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  border-radius:8px;background:rgba(255,255,255,.06);font-size:.78rem;font-weight:700;
+  color:var(--text-dim);transition:all var(--transition);
+}
+.choice-btn:hover:not(.disabled) .letter{background:rgba(129,140,248,.15);color:var(--accent)}
+.choice-btn.correct{
+  background:rgba(52,211,153,.1)!important;border-color:var(--correct)!important;
+  box-shadow:0 0 20px var(--correct-glow);
+}
+.choice-btn.correct .letter{background:var(--correct);color:#064e3b}
+.choice-btn.wrong{
+  background:rgba(248,113,113,.1)!important;border-color:var(--wrong)!important;
+  box-shadow:0 0 20px var(--wrong-glow);animation:shake .4s ease;
+}
+.choice-btn.wrong .letter{background:var(--wrong);color:#7f1d1d}
+.choice-btn.disabled{cursor:default;opacity:.6}
+.choice-btn.disabled.reveal-correct{
+  opacity:1!important;
+  background:rgba(52,211,153,.08)!important;border-color:rgba(52,211,153,.4)!important;
+}
+.choice-btn.disabled.reveal-correct .letter{background:var(--correct);color:#064e3b}
+
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+
+/* ── Next Button ──────────────────────────────────────────────────────── */
+.next-btn{
+  display:none;width:100%;padding:14px;
+  background:linear-gradient(135deg,var(--accent),#a78bfa);
+  border:none;border-radius:var(--radius-sm);
+  color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;
+  transition:all var(--transition);
+}
+.next-btn:hover{box-shadow:0 4px 24px var(--accent-glow);transform:translateY(-2px)}
+.next-btn.visible{display:block;animation:fadeUp .3s ease}
+
+/* ── Session Summary ──────────────────────────────────────────────────── */
+.session-summary{
+  display:none;text-align:center;padding:36px 28px;
+  animation:fadeUp .4s ease;
+}
+.session-summary h3{font-size:1.3rem;font-weight:800;color:var(--text-bright);margin-bottom:4px}
+.session-summary .batch-stat{
+  font-size:2.2rem;font-weight:900;margin:12px 0;
+  background:linear-gradient(135deg,var(--correct),#6ee7b7);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.session-summary p{color:var(--text-dim);font-size:.9rem;margin-bottom:18px}
+.session-summary button{
+  padding:12px 32px;border:none;border-radius:var(--radius-sm);
+  background:linear-gradient(135deg,var(--accent),#a78bfa);
+  color:#fff;font-size:.92rem;font-weight:700;cursor:pointer;
+  transition:all var(--transition);
+}
+.session-summary button:hover{box-shadow:0 4px 24px var(--accent-glow)}
+
+/* ── Stats Overlay ────────────────────────────────────────────────────── */
+.overlay{
+  display:none;position:fixed;inset:0;z-index:100;
+  background:rgba(0,0,0,.6);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;padding:20px;
+}
+.overlay.open{display:flex}
+.stats-panel{
+  width:100%;max-width:560px;max-height:85vh;overflow-y:auto;
+  padding:32px 28px;animation:fadeUp .35s ease;
+}
+.stats-panel h2{
+  font-size:1.4rem;font-weight:800;color:var(--text-bright);margin-bottom:20px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.close-btn{
+  width:36px;height:36px;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);
+  color:var(--text-dim);font-size:1.1rem;cursor:pointer;transition:all var(--transition);
+}
+.close-btn:hover{background:rgba(248,113,113,.15);color:var(--wrong);border-color:rgba(248,113,113,.3)}
+
+.stat-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.stat-row:last-child{border:none}
+.stat-label{font-size:.88rem;color:var(--text-dim);font-weight:500}
+.stat-value{font-size:.95rem;font-weight:700;color:var(--text-bright)}
+
+.chapter-stat{
+  margin-top:16px;padding:16px;border-radius:var(--radius-sm);
+  background:rgba(255,255,255,.02);border:1px solid var(--glass-border);
+}
+.chapter-stat h4{font-size:.88rem;font-weight:700;color:var(--accent);margin-bottom:10px}
+
+.reset-btn{
+  margin-top:20px;width:100%;padding:12px;
+  background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);
+  border-radius:var(--radius-sm);color:var(--wrong);
+  font-size:.85rem;font-weight:700;cursor:pointer;transition:all var(--transition);
+}
+.reset-btn:hover{background:rgba(248,113,113,.15)}
+
+/* ── Keyboard hint ────────────────────────────────────────────────────── */
+.kbd-hint{
+  text-align:center;margin-top:10px;font-size:.75rem;color:var(--text-dim);opacity:.5;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media(max-width:520px){
+  .header h1{font-size:1.8rem}
+  .question-card{padding:24px 20px}
+  .home-grid{grid-template-columns:1fr}
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ── HOME SCREEN ───────────────────────────────────────────────── -->
+  <div id="home-screen">
+    <div class="header">
+      <h1>Quizzer</h1>
+      <p>Adaptive GE History Review — 283 questions, spaced repetition</p>
+    </div>
+    <div class="home-grid" id="home-grid"></div>
+    <div style="text-align:center">
+      <button class="stats-toggle" onclick="openStats()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14V8M8 14V4M12 14V10"/></svg>
+        View Stats
+      </button>
+    </div>
+  </div>
+
+  <!-- ── QUIZ SCREEN ───────────────────────────────────────────────── -->
+  <div id="quiz-screen" class="quiz-screen">
+    <div class="top-bar">
+      <button class="back-btn" onclick="goHome()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 1 4 7l6 6"/></svg>
+        Home
+      </button>
+      <div id="quiz-title" style="font-weight:700;font-size:.95rem;color:var(--text-bright)"></div>
+      <div class="streak-badge" id="streak-badge">🔥 0</div>
+    </div>
+    <div class="progress-wrap"><div class="progress-fill" id="progress-fill"></div></div>
+
+    <div id="question-area">
+      <div class="question-card glass" id="question-card">
+        <div class="q-counter" id="q-counter"></div>
+        <div class="q-text" id="q-text"></div>
+      </div>
+      <div class="choices" id="choices"></div>
+      <button class="next-btn" id="next-btn" onclick="nextQuestion()">Next Question →</button>
+      <div class="kbd-hint">Press <b>1–5</b> or <b>A–E</b> to answer · <b>Enter</b> or <b>Space</b> for next</div>
+    </div>
+
+    <div class="session-summary glass" id="session-summary">
+      <h3>Batch Complete!</h3>
+      <div class="batch-stat" id="batch-stat"></div>
+      <p id="batch-detail"></p>
+      <button onclick="closeSummary()">Continue Studying →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── STATS OVERLAY ──────────────────────────────────────────────── -->
+<div class="overlay" id="stats-overlay">
+  <div class="stats-panel glass" id="stats-panel"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// DATA (auto-embedded by build.py)
+// ══════════════════════════════════════════════════════════════════════
+const QUIZ_DATA = {"quiz1": [{"id": 1, "question": "What are the criteria for \"civilization?\"", "choices": ["a. status distinctions.", "b. cities", "c. record keeping.", "d. control of a geographic area as a means of power.", "e. all of these."], "answer": "all of these."}, {"id": 2, "question": "A society where the rule of women prevails is called a", "choices": ["a. matriarchy.", "b. matrilineality.", "c. patriarchy.", "d. maternalism.", "e. paternalsim."], "answer": "matriarchy."}, {"id": 3, "question": "The largest and most important city in Mesopotamia, which achieved particular eminence as the capital of the Amorite king Hammurabi in the eighteenth century B.C.E., was", "choices": ["a. Babylon", "b. Jericho", "c. Akkad", "d. Babylonia", "e. Baghdad"], "answer": "Babylon"}, {"id": 4, "question": "Metalworking of gold and silver in the late Neolithic period was used for", "choices": ["a. royal jewelry only.", "b. making cooking implements.", "c. making metal-tipped weapons.", "d. agricultural purposes.", "e. decoration or in ceremonies."], "answer": "decoration or in ceremonies."}, {"id": 5, "question": "The first dynastic king, Sargon of Akkad, and his four successors, did all of the following except", "choices": ["a. organize a system of standardized weights and measures.", "b. attack Egypt.", "c. facilitate trade between all the city-states under his control.", "d. issue a comprehensive law code.", "e. use cuneiform writing."], "answer": "attack Egypt."}, {"id": 6, "question": "The biological family that includes humans and humanlike primates is", "choices": ["a. Homo erectus", "b. Homo sapiens", "c. Humanid", "d. Homo habilis", "e. Hominid"], "answer": "Hominid"}, {"id": 7, "question": "The earliest representation of cave art was discovered in:", "choices": ["a. the Chauvet Cave, in southeastern France", "b. from Blombos Cave east of Cape Town, South Africa.", "c. Altamira in Spain", "d. the Great Rift Valley of eastern Africa."], "answer": "from Blombos Cave east of Cape Town, South Africa."}, {"id": 8, "question": "The term city-state refers to all of the following except", "choices": ["a. a small independent state.", "b. an urban center surrounded by agricultural hinterlands .", "c. an association of mutually dependent cities.", "d. self-governing urban centers."], "answer": "an association of mutually dependent cities."}, {"id": 9, "question": "Structures and complexes of very large stones constructed for ceremonial and religious purposes in Neolithic times were called", "choices": ["a. megaliths.", "b. pegaliths.", "c. permastructures.", "d. lithograms.", "e. monoliths."], "answer": "megaliths."}, {"id": 10, "question": "Crucial to Egypt's agriculture was", "choices": ["a. there was almost no agriculture in Egypt because it's a desert.", "b. regular rainfall south of the delta.", "c. proximity to the Nile River.", "d. a complex system of aqueducts.", "e. favor of the gods."], "answer": "proximity to the Nile River."}, {"id": 11, "question": "Mesopotamian priests", "choices": ["a. were chosen by the gods through oracles.", "b. bought their positions from the temples.", "c. inherited their positions from their fathers.", "d. were chosen by the kings.", "e. were chosen by ritual combat."], "answer": "inherited their positions from their fathers."}, {"id": 12, "question": "Which was NOT a technology found in Indian civilization?", "choices": ["a. pottery", "b. metallurgy", "c. brick making", "d. irrigation", "e. mummification"], "answer": "mummification"}, {"id": 13, "question": "Mesopotamia, Egypt, and the Indus Valley civilizations were all", "choices": ["a. based on fertile floodplains and river valleys.", "b. made possible by large agricultural surpluses.", "c. derived from an earlier, as yet undiscovered, \"watershed\" civilization.", "d. based on beer brewing and female labor.", "e. wiped out by a huge drought."], "answer": "based on fertile floodplains and river valleys."}, {"id": 14, "question": "Most early human activity centered on", "choices": ["a. gathering food.", "b. entertainment.", "c. construction projects.", "d. acquiring wealth.", "e. warfare with encroaching clans."], "answer": "gathering food."}, {"id": 15, "question": "According to Egyptian belief, the function assigned by the gods to the Egyptian kings was to maintain ma'at, or the", "choices": ["a. subservience of the people to the king.", "b. welfare and prosperity of the country.", "c. divinely authorized order of the universe.", "d. separation of the divine and natural spheres.", "e. accumulation of royal wealth."], "answer": "divinely authorized order of the universe."}, {"id": 16, "question": "A massive pyramidal stepped tower made of mudbricks and associated with religious complexes in ancient Mesopotamian cities is known as a:", "choices": ["a. altar.", "b. ziggurat", "c. lugal's burial chamber", "d. steps leading up to the pyramid", "e. open air plaza"], "answer": "ziggurat"}, {"id": 17, "question": "Charles Darwin argued that over long periods of time species changed mainly as the result of natural selection and genetic mutation. Darwin called this process", "choices": ["a. logical progression.", "b. biological determinism.", "c. evolution.", "d. human osteology.", "e. creationism."], "answer": "evolution."}, {"id": 18, "question": "Farming was probably a more difficult way of life than foraging because", "choices": ["a. you had to stay in one location year-round.", "b. farmer first worked to clear and cultivate land before a crop was available", "c. changes in weather were unpredictable.", "d. none of these.", "e. the diet was less diverse."], "answer": "farmer first worked to clear and cultivate land before a crop was available"}, {"id": 19, "question": "Which of the hominids first developed speech, probably about 50,000 years ago?", "choices": ["a. Homo sapiens", "b. Homo habilis", "c. Homo erectus", "d. australopithicines", "e. Homo neanderthalus"], "answer": "Homo sapiens"}, {"id": 20, "question": "Matrilineal societies were", "choices": ["a. defined by a nuclear family.", "b. defined by paternal heritage.", "c. defined by maternal heritage.", "d. ruled by women.", "e. ruled by men."], "answer": "defined by maternal heritage."}, {"id": 21, "question": "A professional position reserved for men who had undergone the lengthy training required to be able to read and write using cuneiform, hieroglyphics, or other early, cumbersome writing systems was that of the", "choices": ["a. slave", "b. business owner", "c. scribe", "d. king", "e. priest"], "answer": "scribe"}, {"id": 22, "question": "Homo habilis got their meat primarily by", "choices": ["a. hunting with spears and other thrown weapons.", "b. herding animals off cliffs or into swamps.", "c. hunting with bows and arrows.", "d. setting traps.", "e. scavenging from kills made by animals."], "answer": "scavenging from kills made by animals."}, {"id": 23, "question": "One of the difficulties historians have for understanding the role of women in Mesopotamian society is", "choices": ["a. their role in the military.", "b. their role as primary agricultural producers was not considered noteworthy.", "c. the requirement that they never leave the house.", "d. the only existing records were written by elite male scribes."], "answer": "the only existing records were written by elite male scribes."}, {"id": 24, "question": "Which of the following is not included in the Semitic family of languages?", "choices": ["a. Phoenician", "b. Akkadian", "c. Aramaic", "d. Hebrew", "e. Elamite"], "answer": "Elamite"}, {"id": 25, "question": "A system of writing in which pictorial symbols represented sounds, syllables, or concepts, and was used for official and monumental inscriptions in ancient Egypt, is called:", "choices": ["a. script", "b. papyrus", "c. ma'at", "d. hieroglyphics.", "e. cuneiform"], "answer": "hieroglyphics."}, {"id": 26, "question": "Which of these the early hominids most closely resembled Homo sapiens?", "choices": ["a. Homo Neanderthal", "b. Homo habilis", "c. Homo erectus", "d. Homo genous", "e. australopithicines."], "answer": "Homo Neanderthal"}, {"id": 27, "question": "Most early agricultural communities had a staple crop based on", "choices": ["a. sheep and goats.", "b. pumpkins, squash, or gourds.", "c. oranges and mushrooms.", "d. berries and nuts.", "e. grain or rice."], "answer": "grain or rice."}, {"id": 28, "question": "Which of the following was not among Egypt's natural resources?", "choices": ["a. Building stone", "b. Turquoise and gold", "c. Reeds for paper", "d. Copper", "e. Salt"], "answer": "Salt"}, {"id": 29, "question": "The American continents contained very few domesticated animals because", "choices": ["a. natives preferred hunting instead.", "b. agriculture made domesticated animals unnecessary.", "c. while there were many appropriate wild species, they were difficult to domesticate.", "d. the environment made raising animals difficult.", "e. there were few species suitable for domestication."], "answer": "there were few species suitable for domestication."}, {"id": 30, "question": "Since the foraging lifestyle was not particularly unpleasant or hard, foragers had a great deal of time left for", "choices": ["a. dancing.", "b. religion.", "c. preparing for war.", "d. finding new hunting grounds.", "e. socializing, making tools, and creating art."], "answer": "socializing, making tools, and creating art."}, {"id": 31, "question": "The change from food gathering to food production occurred between about 8000 and 2000 B.C.E. during:", "choices": ["a. the Neolithic period", "b. the Pleistocene", "c. the Bronze Age", "d. the Iron Age", "e. the Palaeolithic period"], "answer": "the Neolithic period"}, {"id": 32, "question": "Cuneiform writing was accomplished by", "choices": ["a. incising written symbols in clay.", "b. mathematical calculations on the outside of a clay envelope.", "c. learning the cuneiform language.", "d. alphabetical arrangements of phonemes.", "e. implanting reed tips and tokens in clay tablets to make patterns."], "answer": "incising written symbols in clay."}, {"id": 33, "question": "Fundamental concepts of Egyptian religion were based on", "choices": ["a. each person's individual reflection on what god is like.", "b. the desires of the pharaohs.", "c. the vision of a cosmic order that the physical environment of the Nile Valley evoked.", "d. extending Egyptian control over competing cultures.", "e. ideas brought to Egypt from Mesopotamia."], "answer": "the vision of a cosmic order that the physical environment of the Nile Valley evoked."}, {"id": 34, "question": "The ability to walk upright on two legs, characteristic of hominids, is called", "choices": ["a. Biapendigism", "b. Twin pedalism", "c. upright pedalism", "d. Bipedalism", "e. Dipedalism"], "answer": "Bipedalism"}, {"id": 35, "question": "Pastoralists", "choices": ["a. were mobile populations without many material goods.", "b. were entirely carnivorous.", "c. used herds for transportation.", "d. were happier because their lives were less stressful.", "e. viewed animals as sacred totems."], "answer": "were mobile populations without many material goods."}, {"id": 36, "question": "It is believed that many species of large mammals may have disappeared between 40,000 and 13,000 years ago because of climate change and", "choices": ["a. other natural disasters.", "b. delayed or insufficient genetic adaptation.", "c. death from new diseases spread by human migration.", "d. human predation."], "answer": "human predation."}, {"id": 37, "question": "What is not an aspect of culture?", "choices": ["a. similar values.", "b. shared biological characteristics.", "c. shared religious beliefs.", "d. learned patterns of expression and action", "e. material objects such as dwellings, clothing and tools."], "answer": "shared biological characteristics."}, {"id": 38, "question": "In order to discover more specific information about the social structure of Indus Valley civilizations, what needs to be done?", "choices": ["a. All of these.", "b. Carbon dating of artifacts.", "c. Analysis of exhumed bodies", "d. The writing of the civilization must be deciphered.", "e. Sharing knowledge with other archeologists and historians."], "answer": "The writing of the civilization must be deciphered."}, {"id": 39, "question": "Women in Egypt seemed to have", "choices": ["a. more status than in Mesopotamia.", "b. all of these.", "c. subordinate status to men.", "d. rights of divorce.", "e. rights to property."], "answer": "all of these."}, {"id": 40, "question": "The earliest historically documented people of Mesopotamia were the", "choices": ["a. Hittites.", "b. Medes.", "c. Timpanos.", "d. Sumerians.", "e. Hyksos."], "answer": "Sumerians."}, {"id": 41, "question": "The Neolithic era is associated with which of the following?", "choices": ["a. an architectural hallmark when people lived in buildings instead of caves.", "b. the start of a bilateral trade system.", "c. making large rock formations like Stonehenge for religious purposes.", "d. making tools out of materials including metal.", "e. the rise of agriculture."], "answer": "the rise of agriculture."}, {"id": 42, "question": "Metal objects unearthed in the Indus Valley", "choices": ["a. have been primarily jewelry and other decorative items.", "b. have been mostly tools and other useful objects.", "c. were mostly weapons.", "d. were used only in urban areas.", "e. belonged to the elite and wealthy classes."], "answer": "have been mostly tools and other useful objects."}, {"id": 43, "question": "Current archaeological theory supports Louis and Mary Leakey's discovery that the cradle of humanity is located on which continent?", "choices": ["a. Europe.", "b. Asia.", "c. Australia.", "d. Africa.", "e. America."], "answer": "Africa."}, {"id": 44, "question": "Modern research has found what percentage of human DNA to be identical to that of apes?", "choices": ["a. Humans and apes share physical similarities but no common DNA.", "b. 25 percent", "c. 99 percent", "d. 50 percent", "e. 10 percent"], "answer": "99 percent"}, {"id": 45, "question": "The two main cities of early Indian civilization are", "choices": ["a. Akkad and Thebes.", "b. Troy and Delhi.", "c. Riazan and Antioch.", "d. Syracuse and Illyria.", "e. Harappa and Mohenjo-Daro."], "answer": "Harappa and Mohenjo-Daro."}, {"id": 46, "question": "Which three traits distinguish humans from apes and other primates?", "choices": ["a. bipedalism, larger brain, larynx lower in the neck", "b. larger brain, opposing thumbs, larynx higher in the neck", "c. foraging, tool-making, bipedalism", "d. pastoralism, bipedalism, larger brain", "e. opposing thumbs, bipedalism, pastoralism"], "answer": "bipedalism, larger brain, larynx lower in the neck"}, {"id": 47, "question": "Mesopotamian society was made up of three classes, which were created by", "choices": ["a. Law Code of Hammurabi.", "b. unlawful means.", "c. hereditary mechanisms.", "d. a vote of the citizenry.", "e. social norms."], "answer": "Law Code of Hammurabi."}, {"id": 48, "question": "The capital of Old Kingdom Egypt, near the head of the Nile Delta and where early rulers were interred in the nearby pyramids, was:", "choices": ["a. Alexandria", "b. Babylon", "c. Thebes", "d. Cairo", "e. Memphis"], "answer": "Memphis"}, {"id": 49, "question": "Homo sapiens, the current human species, evolved in Africa sometime", "choices": ["a. during the Great Ice Age.", "b. between 400,000 and 100,000 years ago.", "c. during the Paleolithic Period.", "d. during the Pleistocene Period."], "answer": "between 400,000 and 100,000 years ago."}, {"id": 50, "question": "In the third millennium B.C.E., the political ruler in Sumer was", "choices": ["a. an emperor.", "b. a kniaz.", "c. a vizier.", "d. a lugal.", "e. a pharaoh."], "answer": "a lugal."}, {"id": 51, "question": "The improvements in the Mesopotamian military technology included all of the following except", "choices": ["a. metal-tipped arrows used by squads of archers.", "b. chariots.", "c. siege machinery.", "d. bronze weapons.", "e. incendiary devices."], "answer": "incendiary devices."}, {"id": 52, "question": "Recent discoveries of large stones and burial chambers may indicate", "choices": ["a. ceremonial and religious purposes.", "b. increased warfare.", "c. an interest in astronomy.", "d. a change in religious focus.", "e. an interest in measuring time."], "answer": "ceremonial and religious purposes."}, {"id": 53, "question": "Travel between continents in early human diasporas - such as between Siberia and Alaska - was accomplished by", "choices": ["a. canoes.", "b. horses and pack animals.", "c. walking at low tide across sand bars.", "d. swimming.", "e. walking across land bridges."], "answer": "walking across land bridges."}, {"id": 54, "question": "The earliest transition to agriculture was characterized by", "choices": ["a. increased seed hybridization in the Americas.", "b. increased trade routes in the Mediterranean.", "c. an increase in tribal warfare between foraging clans.", "d. a decrease in desertification in the Sahara in Africa .", "e. the advent of specialized tools."], "answer": "the advent of specialized tools."}, {"id": 55, "question": "One of the most important breakthroughs which ushered in agriculture in Mesopotamia was", "choices": ["a. construction of canals to bring water to distant fields", "b. the introduction of wheat crops.", "c. large numbers of animals for fertilizer.", "d. the region's high annual rainfall.", "e. a highly motivated work force."], "answer": "construction of canals to bring water to distant fields"}, {"id": 56, "question": "Which of the following is not considered a purpose for building Megaliths?", "choices": ["a. burial chambers", "b. altars for human sacrifice.", "c. marking the rising sun for the summer solstice", "d. gathering place for tribal elders", "e. astronomic calendars"], "answer": "altars for human sacrifice."}, {"id": 57, "question": "The greatest change caused by the gradual adoption of agriculture was", "choices": ["a. a global population decrease.", "b. a global population increase.", "c. major migrations to the temperate zones.", "d. a major die-off of wild species.", "e. an increase in insect infestation due to monocropping."], "answer": "a global population increase."}, {"id": 58, "question": "The culture that developed in Egypt was unique largely because of", "choices": ["a. Egyptian dominance in metalworking", "b. Egypt's interaction with other civilizations", "c. Egypt's surplus agricultural production and trade", "d. Egypt's natural isolation and essential self-sufficiency", "e. Egypt's large population"], "answer": "Egypt's natural isolation and essential self-sufficiency"}, {"id": 59, "question": "A body preserved by chemical processes or special natural circumstances, often in the belief that the deceased will need it again in the after life is called a", "choices": ["a. cuneiform.", "b. embalbed.", "c. mummy.", "d. sarcophogous.", "e. skeleton."], "answer": "mummy."}, {"id": 60, "question": "The region of modern Pakistan which gave birth to the earliest known civilization in the Indian subcontinent is centered on which river?", "choices": ["a. Nile.", "b. Oxus.", "c. Ganges.", "d. Indus."], "answer": "Indus."}, {"id": 61, "question": "A reed that grows along the banks of the Nile River in Egypt. From it was produced a coarse, paperlike writing medium used by the Egyptians and many other peoples in the ancient Mediterranean and Middle East was", "choices": ["a. script", "b. ma'at", "c. papyrus", "d. cuneiform", "e. hieroglyphics."], "answer": "papyrus"}, {"id": 62, "question": "A large, triangular stone monument, used in Egypt and Nubia as a burial place for the king was the:", "choices": ["a. pyramid.", "b. ziggurat.", "c. Menes.", "d. burial chamber.", "e. Solar Ship."], "answer": "pyramid."}, {"id": 63, "question": "A small charm meant to protect the bearer from evil and found frequently in archaeological excavations in Mesopotamia and Egypt are called:", "choices": ["a. amulets", "b. cuneiform", "c. charm bracelets", "d. scribes", "e. ziggurats"], "answer": "amulets"}, {"id": 64, "question": "Women played a major role in the transition to crop cultivation because", "choices": ["a. they were the primary gatherers of wild plant foods.", "b. they were unsuited for heavier work.", "c. only women lived very long in farming settlements.", "d. it's easy to do agriculture and raise children at the same time.", "e. since women did the cooking, it was natural for them to grow the plants."], "answer": "they were the primary gatherers of wild plant foods."}, {"id": 65, "question": "Austrolepithecine \"Lucy\" was found where?", "choices": ["a. Easter Island", "b. Australia", "c. Peking", "d. Java", "e. Ethiopia"], "answer": "Ethiopia"}, {"id": 66, "question": "The Indo-European languages include all of the following except", "choices": ["a. Germanic languages.", "b. Slavic languages.", "c. Romance languages (based on Latin).", "d. Sino-Tibetan languages.", "e. Celtic languages."], "answer": "Sino-Tibetan languages."}, {"id": 67, "question": "An alloy of copper with a small amount of tin (or sometimes arsenic), which is harder and more durable than copper alone, is:", "choices": ["a. copper.", "b. iron.", "c. gold.", "d. steel.", "e. bronze."], "answer": "bronze."}, {"id": 68, "question": "Which of the following people believed that the first humans descended from the sky?", "choices": ["a. Yoruba", "b. Maori", "c. Hopi", "d. Deccan", "e. Hebrews"], "answer": "Yoruba"}, {"id": 69, "question": "Scholars feel that earliest domesticated animals were", "choices": ["a. goats.", "b. sheep.", "c. cattle.", "d. cats.", "e. dogs."], "answer": "dogs."}, {"id": 70, "question": "Which of the following was probably not one of the components of the \"systems failure\" that brought down the Indus Valley cities?", "choices": ["a. Increased erosion", "b. That the Hakra River system dried up", "c. That invaders from the north and east drove out the inhabitants", "d. Salinization of farmland", "e. Massive flooding"], "answer": "That invaders from the north and east drove out the inhabitants"}, {"id": 71, "question": "The religions of farming communities tended to focus on", "choices": ["a. a sky-god or male deity.", "b. nature spirits.", "c. a variety of important gods.", "d. moon worship.", "e. an earth mother or female deity."], "answer": "an earth mother or female deity."}, {"id": 72, "question": "The first regular producers of tools were", "choices": ["a. Neolithic Man.", "b. Homo erectus.", "c. Homo sapiens.", "d. australopithicenes.", "e. Homo habilis."], "answer": "Homo habilis."}, {"id": 73, "question": "Which of the following classes does not belong to Babylonia society?", "choices": ["a. The free, landowning class", "b. The class of slaves", "c. The class of dependent farmers and artisans", "d. The class of tenant farmers"], "answer": "The class of tenant farmers"}, {"id": 74, "question": "Egyptian kingship and religion were closely intertwined because it was believed:", "choices": ["a. the pharaoh could determine if one would go to the afterlife.", "b. the pharaoh was ordained by god to rule over the kingdom.", "c. the weather was dependent on whether the pharaoh was pleased with his people.", "d. the pharaoh was the living Horus and son of Re.", "e. the stability of Egyptian society depended on the quality of the king's treasures."], "answer": "the pharaoh was the living Horus and son of Re."}, {"id": 75, "question": "Egyptian writings were probably first used for", "choices": ["a. administrative matters.", "b. business inventories.", "c. law codes.", "d. hymns to the gods.", "e. king lists."], "answer": "administrative matters."}, {"id": 76, "question": "The central figure in the ancient Egyptian state and believed to be an earthly manifestation of the gods was the:", "choices": ["a. scribe", "b. ma'at", "c. pharoah", "d. priest"], "answer": "pharoah"}, {"id": 77, "question": "The geological era that occurred between about 2 million and 11,000 years ago was the", "choices": ["a. Great Thawing Age.", "b. Great Ice Age.", "c. Lesser Ice Age.", "d. Polar Vortex Age.", "e. Polar Incline."], "answer": "Great Ice Age."}, {"id": 78, "question": "Who was the Amorite ruler of Babylon (r. 1792 1750B.C.E.) best known for a code of laws inscribed on a black stone pillar illustrating the principles to be used in legal cases?", "choices": ["a. Hammurabi", "b. Uruk", "c. Enkidu", "d. Sargon", "e. Gilgamesh"], "answer": "Hammurabi"}, {"id": 79, "question": "Cave art is generally understood to represent", "choices": ["a. an inventory of hunting and gathering.", "b. early graffiti.", "c. religious or mythological stories.", "d. a wide range of possible explanations.", "e. population counts."], "answer": "a wide range of possible explanations."}, {"id": 80, "question": "Advances in mathematics and careful observations of nature made the Mesopotamians sophisticated practitioners of:", "choices": ["a. biology.", "b. none of these.", "c. astronomy.", "d. meteorology.", "e. geology."], "answer": "astronomy."}, {"id": 81, "question": "The Mesopotamian writing system is called", "choices": ["a. cuneiform.", "b. Persian.", "c. Linear A.", "d. hieroglyphics.", "e. Arabic"], "answer": "cuneiform."}, {"id": 82, "question": "Mesopotamian gods were anthropomorphic; that is, they", "choices": ["a. appeared in the bodies of kings while on earth.", "b. took form as the elements of nature.", "c. were imagined to be humanlike in form and conduct.", "d. were omniscient.", "e. were divine and perfect beings."], "answer": "were imagined to be humanlike in form and conduct."}], "quiz2": [{"id": 1, "question": "What made certain Phoenician textiles unique?", "choices": ["a. Their expense", "b. Blind stitching", "c. The combination of silk and cotton fabric", "d. Man-made fibers", "e. Purple dye"], "answer": "Purple dye"}, {"id": 2, "question": "The Hyksos were able to conquer Egypt because they had", "choices": ["a. massive armed forces from a consolidated army of the Near East.", "b. control of the Nile Delta region, so they could restrict irrigation to Egyptian agriculture.", "c. iron weapons.", "d. superior administrative organization.", "e. horse-drawn chariots carrying archers with composite bows."], "answer": "horse-drawn chariots carrying archers with composite bows."}, {"id": 3, "question": "The foreign policy of the Carthaginian state", "choices": ["a. was neglected by the Phoenician Empire.", "b. reflected an interest in protecting its sea trade.", "c. was restricted by its more powerful neighbors.", "d. was based on Assyrian models.", "e. was constantly overturned by Greek powers."], "answer": "reflected an interest in protecting its sea trade."}, {"id": 4, "question": "The collapse of the Mycenaean civilization is indicated by which of the following:", "choices": ["a. Destruction of palaces.", "b. Competition for resources.", "c. The disappearance of Linear B writing.", "d. All of these.", "e. Disruption of trade routes."], "answer": "All of these."}, {"id": 5, "question": "The Phoenicians developed a system of writing based on consonants, and the vowel sounds added by this group resulted in a complete alphabet writing system:", "choices": ["a. Turks", "b. Egyptians", "c. Chinese", "d. Greeks", "e. Babylonians"], "answer": "Greeks"}, {"id": 6, "question": "The pharaoh Akhenaten is credited by many historians with", "choices": ["a. damaging the economy beyond repair.", "b. implementing political reforms that harmed the majority of Egyptians.", "c. the invention of monotheism.", "d. permanently reforming corrupt temple priests in Egypt.", "e. linking his wealth to the traditional system."], "answer": "the invention of monotheism."}, {"id": 7, "question": "Carthage's power in the Mediterranean Sea rested with its ______.", "choices": ["a. merchant class", "b. priests", "c. navy", "d. elite"], "answer": "navy"}, {"id": 8, "question": "What resources did southern Greece and the Aegean have most?", "choices": ["a. Fish, meat, and grain", "b. Gold, copper, and reeds", "c. Corn, squash, and potatoes", "d. Flax, dates, and fish", "e. Grapes, olives, and some grains"], "answer": "Grapes, olives, and some grains"}, {"id": 9, "question": "Which of the following is true of the rule of Akhenaten?", "choices": ["a. All of the these.", "b. His wife was Nefertiti.", "c. He fostered a new style of naturalistic art.", "d. He created a religious monotheistic revolution.", "e. He built a new capital named Amarna."], "answer": "All of the these."}, {"id": 10, "question": "The era of the New Kingdom in Egypt is characterized by restoration of Egyptian rule and", "choices": ["a. a return to isolationism.", "b. Nubian rebellion.", "c. a return to democracy.", "d. a military alliance with the Hittites.", "e. expansion north into Syria and south into Nubia."], "answer": "expansion north into Syria and south into Nubia."}, {"id": 11, "question": "Solomon began an ambitious building project to create", "choices": ["a. the walled city of Jerusalem.", "b. the Wailing Wall.", "c. aqueducts and irrigation canals.", "d. the First Temple.", "e. the Library of Alexandria."], "answer": "the First Temple."}, {"id": 12, "question": "The two divisions within the population of Mesopotamia were", "choices": ["a. Assyrians and Sumerians", "b. Sumerians and Babylonians.", "c. Assyrians and Babylonians.", "d. Phoenicians and Kassites.", "e. Sargonians and Ninevans."], "answer": "Assyrians and Babylonians."}, {"id": 13, "question": "Which civilization collapsed first?", "choices": ["a. Assyrian", "b. Mycenaean", "c. Neo-Babylonian", "d. Minoan", "e. Hittite"], "answer": "Minoan"}, {"id": 14, "question": "Which of the following were common to Assyrian artwork?", "choices": ["a. military conquest.", "b. torture", "c. deportations", "d. lion hunting", "e. all of these"], "answer": "all of these"}, {"id": 15, "question": "The Hebrew language of the Bible reflects the speech of the Israelites until about 500 B.C.E., when it was supplanted by ________.", "choices": ["a. Phoenician", "b. Assyrian", "c. Hebrew", "d. Linear B", "e. Aramaic"], "answer": "Aramaic"}, {"id": 16, "question": "The Library of ______ was a large collection of writings drawn from the ancient literary, religious, and scientific traditions of Mesopotamia.", "choices": ["a. Alexandria", "b. Ashur", "c. Ashurbanipal", "d. Ninevah", "e. Crete"], "answer": "Ashurbanipal"}, {"id": 17, "question": "One important and peaceful legacy of Assyrian rule was _________.", "choices": ["a. the egalitarian rule of their military", "b. the Library of Ashurbanipal", "c. the Hebrew Bible", "d. mass deportations", "e. none of these"], "answer": "the Library of Ashurbanipal"}, {"id": 18, "question": "Israel is important partly because", "choices": ["a. it is the site of religious shrines to Medianites.", "b. it is the only access to the Mediterranean.", "c. it is a crossroads to the Near East, Egypt, and Arabia.", "d. it had access to the murex snail, which produced purple dye.", "e. it is the site of perfect center under the North Star."], "answer": "it is a crossroads to the Near East, Egypt, and Arabia."}, {"id": 19, "question": "The prosperous civilization on the Aegean island of Crete in the second millennium B.C.E. was", "choices": ["a. Greek.", "b. Anatolian.", "c. Macedonia.", "d. Minoan.", "e. Mycenae."], "answer": "Minoan."}, {"id": 20, "question": "The Late Bronze Age in the Middle East was a \"cosmopolitan era\" because", "choices": ["a. elements of culture were widely shared.", "b. lifestyles were radically different from all that had gone before.", "c. it was primarily an urban-based society.", "d. most civilizations adopted identical religions, laws, and social structures.", "e. different groups of people remained isolated."], "answer": "elements of culture were widely shared."}, {"id": 21, "question": "Before making any decisions, the Assyrian king would do what?", "choices": ["a. consult the gods with ritual divination", "b. perform a ritual human sacrifice.", "c. take hallucinogens to commune with the divine forces", "d. take a democratic vote of all male citizens.", "e. poll his military leaders."], "answer": "consult the gods with ritual divination"}, {"id": 22, "question": "The language of diplomacy and government correspondence in the Mesopotamian regions was", "choices": ["a. Akkadian", "b. Babylonian.", "c. Kassite", "d. Egyptian", "e. Aramaic"], "answer": "Akkadian"}, {"id": 23, "question": "The exile of Hebrews to Babylon in 587 B.C.E. occurred under", "choices": ["a. Nebuchadnezzar.", "b. Ashurbanipal.", "c. a Chaldean revolt.", "d. Darius of Persia.", "e. Cyrus the Great."], "answer": "Nebuchadnezzar."}, {"id": 24, "question": "The Hittites were the foremost power from 1700 to 1200 B.C.E. in", "choices": ["a. Israel.", "b. Mesopotamia.", "c. Persia.", "d. Egypt.", "e. Anatolia."], "answer": "Anatolia."}, {"id": 25, "question": "Which woman held the throne of the New Kingdom of Egypt?", "choices": ["a. Nefertiti", "b. Cleopatra", "c. Hatshepsut", "d. Amon"], "answer": "Hatshepsut"}, {"id": 26, "question": "The epic poem of Homer, The Iliad, related the story of a war between the Greeks and the Hittites, based on the ten year siege and eventual destruction of the city of:", "choices": ["a. Athens", "b. Hattusha", "c. Lydia", "d. Troy", "e. Çatal Hüyük"], "answer": "Troy"}, {"id": 27, "question": "German businessman and archaeologist Heinrich Schliemann found shaft graves at which excavation site?", "choices": ["a. Corinth.", "b. Crete.", "c. Mycenae.", "d. Pylos.", "e. Troy."], "answer": "Mycenae."}, {"id": 28, "question": "The site of a fortified palace complex in southern Greece that controlled a Late Bronze Age kingdom was", "choices": ["a. Macedonia.", "b. Athens.", "c. Mycenae.", "d. Thebes.", "e. Crete."], "answer": "Mycenae."}, {"id": 29, "question": "Transportation in western Asia was revolutionized in the Later Bronze Age by the introduction of", "choices": ["a. elephants.", "b. ox.", "c. wheel.", "d. zebra.", "e. horses."], "answer": "horses."}, {"id": 30, "question": "The basic Israelite political structure before King Saul was", "choices": ["a. rule by chieftains of the twelve tribes (descendants of Joseph and Jacob).", "b. rule by whoever ruled in Jerusalem.", "c. patriarchal rule by the leader at Shiloh.", "d. an oligarchy of judges.", "e. the interpretation of prophets."], "answer": "rule by chieftains of the twelve tribes (descendants of Joseph and Jacob)."}, {"id": 31, "question": "The rise of a centralized monarchy in Israel is typically attributed to _____.", "choices": ["a. Joseph", "b. David", "c. Abraham", "d. Solomon", "e. Jacob"], "answer": "David"}, {"id": 32, "question": "Diaspora means refers to the Jews being taken from their homeland to __________.", "choices": ["a. Egypt", "b. Jordan", "c. Babylon", "d. Anatolia", "e. Syria"], "answer": "Babylon"}, {"id": 33, "question": "The chief opponents of Carthaginian power in the Mediterranean Sea were ________.", "choices": ["a. Romans and Greeks", "b. Greeks and Persians", "c. Tunisians and Libyans", "d. Israelites and Egyptians", "e. Moroccans and Spaniards"], "answer": "Romans and Greeks"}, {"id": 34, "question": "Writing in Mycenaean Greece is done in what form?", "choices": ["a. Cuneiform", "b. Ogam", "c. Linear B", "d. Runes", "e. Oracle bones"], "answer": "Linear B"}, {"id": 35, "question": "A monumental sanctuary built in Jerusalem by King Solomon in the tenth century B.C.E. to be the religious center for the Israelite god Yahweh was the", "choices": ["a. Holy Temple", "b. Knights Templar", "c. Second Temple", "d. Temple Mount.", "e. First Temple"], "answer": "First Temple"}, {"id": 36, "question": "Belief in the existence of a single divine entity is referred to as", "choices": ["a. cultural bias.", "b. polytheism.", "c. Judaism.", "d. single worship.", "e. monotheism."], "answer": "monotheism."}, {"id": 37, "question": "Which of the following rituals did not aid the Jews in maintaining a strong cultural identity after the loss of their state?", "choices": ["a. The requirement that men grow beards", "b. Dietary rules", "c. Keeping the Sabbath", "d. Banning marriage with non-Jews", "e. Ritual baths"], "answer": "The requirement that men grow beards"}, {"id": 38, "question": "Which of the following poses a problem for interpreting the history of the early Israelites from the Bible?", "choices": ["a. The Bible was written for religious, not historical, purposes.", "b. The Hebrew Bible was written in several phases by different people.", "c. They were pastoralists who did not write down their history for nearly 1,000 years.", "d. Hebrew civilization was interrupted by conquest several times.", "e. These are all problematic."], "answer": "These are all problematic."}, {"id": 39, "question": "Carthage was founded by peoples migrating from", "choices": ["a. Arabia.", "b. Rome.", "c. Greece.", "d. Egypt.", "e. Phoenicia."], "answer": "Phoenicia."}, {"id": 40, "question": "The forcible removal and relocation of large numbers of people or entire populations is called", "choices": ["a. mass deportation.", "b. mass immigration.", "c. mass relocation.", "d. forced mass removal.", "e. forced relocation."], "answer": "mass deportation."}, {"id": 41, "question": "A collection of sacred books containing diverse materials concerning the origins, experiences, beliefs, and practices of the Israelites is the", "choices": ["a. Book of Prophecies.", "b. Iliad.", "c. Tablet of Gilgemesh.", "d. New Testament.", "e. Hebrew Bible."], "answer": "Hebrew Bible."}, {"id": 42, "question": "The chief tactic that the Assyrians used to maintain tranquility in their empire was", "choices": ["a. cultural toleration of a heterogeneous population.", "b. force and terror.", "c. requiring no taxes of newly conquered areas.", "d. monotheism.", "e. requiring every man to serve in the military."], "answer": "force and terror."}, {"id": 43, "question": "The \"recollections\" of the journey of Abraham _____.", "choices": ["a. is a proven accurate historical account of past event", "b. may compress the experiences of generations of pastoralists", "c. accurately describes", "d. indicate the polytheistic nature of Israelite religion"], "answer": "may compress the experiences of generations of pastoralists"}, {"id": 44, "question": "After Solomon's death, the kingdom of Israel was split into", "choices": ["a. Assyria and Egypt.", "b. the Jordan River Valley and Lebanon.", "c. Judah and Israel.", "d. Syria and Jerusalem.", "e. Lebanon and Assyria."], "answer": "Judah and Israel."}], "quiz3": [{"id": 1, "question": "After 212 C.E., the emperor Caracalla granted citizenship on what basis?", "choices": ["a. Only if they swore allegiance to Rome", "b. If they were free, adult, male inhabitants of the empire", "c. As soon as the Roman legions conquered them", "d. If they were wealthy enough to buy citizenship", "e. By living in Rome for a year and a day"], "answer": "If they were free, adult, male inhabitants of the empire"}, {"id": 2, "question": "What city became the new imperial capital of the Roman Empire in 324 C.E.?", "choices": ["a. Carthage", "b. Athens", "c. Constantinople", "d. Alexandria", "e. Damascus"], "answer": "Constantinople"}, {"id": 3, "question": "A significant difference in Roman expansion versus Greek was that Romans:", "choices": ["a. did not impose taxes", "b. had no system of government in place in the new territories", "c. extended citizenship in degrees to most conquered populations", "d. did not have a standardized language", "e. conquered only to obtain slaves"], "answer": "extended citizenship in degrees to most conquered populations"}, {"id": 4, "question": "The well-planned urban capital of the Han dynasty was", "choices": ["a. Hong Kong", "b. Nanjing", "c. Chang'an", "d. Seoul", "e. Beijing"], "answer": "Chang'an"}, {"id": 5, "question": "How did the early Romans view the natural world?", "choices": ["a. As a shadow world of paradise", "b. As filled with numerous invisible shapeless forces called numina", "c. As created by a single God", "d. As a body of natural laws understandable by humans", "e. As a cosmic credit and debit sheet on which one's actions determined one's destiny"], "answer": "As filled with numerous invisible shapeless forces called numina"}, {"id": 6, "question": "The conversion to Christianity of which Roman emperor ushered in a time of tolerance, acceptance, and eventual dominance of Christianity?", "choices": ["a. Constantine", "b. Diocletian", "c. Brucellosis", "d. Claudius", "e. Tiberius"], "answer": "Constantine"}, {"id": 7, "question": "What was buried with the Emperor Shi Huang-di in his elaborate tomb?", "choices": ["a. an entourage of priests and servants", "b. ten thousand pounds of gold", "c. seven thousand life-sized statues of his soldier", "d. his wife", "e. his sword"], "answer": "seven thousand life-sized statues of his soldier"}, {"id": 8, "question": "It was customary for young brides in China to", "choices": ["a. live with their husbands' families", "b. marry for love", "c. play a public role in their village", "d. continue their education after marriage", "e. take over family leadership from their mothers-in-law"], "answer": "live with their husbands' families"}, {"id": 9, "question": "The competition among states in the Warring States Period resulted in", "choices": ["a. an enormous tax increase", "b. peasant rebellions", "c. the creation of the first empire under the Qin state", "d. the weakening of China, allowing the Annamese invasion", "e. the escalation of violence against the upper classes"], "answer": "the creation of the first empire under the Qin state"}, {"id": 10, "question": "Under the Principate, Roman law", "choices": ["a. were gathered from local traditions and evaluated by jurists to compile the lex romana", "b. was based on the Twelve Tables and supplemented by decrees from the Senate and bills from the Assemblies", "c. was codified by public vote", "d. was limited to the Twelve Tables", "e. came largely from the emperor himself"], "answer": "came largely from the emperor himself"}, {"id": 11, "question": "The council whose members were heads of wealthy landowning families at the center of political action in the Roman Republic was", "choices": ["a. the Congress of Monarchs", "b. the Senate", "c. annually elected civic officials", "d. the Council of Nobles", "e. the Plebeian Council"], "answer": "the Senate"}, {"id": 12, "question": "The leading export commodity of China during the Han was", "choices": ["a. cotton textiles", "b. silk", "c. tea", "d. rice", "e. porcelain"], "answer": "silk"}, {"id": 13, "question": "Which of the following is not generally considered a contributing factor to the fall of the Han Empire?", "choices": ["a. Attacks by non-Chinese from across the frontiers", "b. Corruption within the government", "c. The frustration of hungry peasants", "d. The subversive ideas of Buddhism", "e. The failure of the Han reforms"], "answer": "The subversive ideas of Buddhism"}, {"id": 14, "question": "Which of the following statements best describes the situation in the Han Dynasty upon the death of Gaozu?", "choices": ["a. Real power initially fell on his son Wu", "b. Subsequent rulers immediately emphasized Legalism", "c. Subsequent rulers placated nomadic confederations with goods and political marriages", "d. Real power resided in his wife, Empress Lu"], "answer": "Real power resided in his wife, Empress Lu"}, {"id": 15, "question": "The first Romans to reach China's court of Emperor Huan were envoys of which emperor?", "choices": ["a. Commodus", "b. Marcus Aurelius", "c. Augustus Caesar", "d. Nero", "e. Julius Caesar"], "answer": "Marcus Aurelius"}, {"id": 16, "question": "One of the primary reasons Legalists in the Qin empire opposed the Confucians was that the latter ____.", "choices": ["a. desired the independence of children", "b. desired wealth and business ownership", "c. expected benevolent and nonviolent rulers", "d. exalted rugged individualism", "e. expected the rich to care for the poor"], "answer": "expected benevolent and nonviolent rulers"}, {"id": 17, "question": "As Italian farmers found themselves increasingly away on military campaigns, their lands were often administered by:", "choices": ["a. letting their land lie fallow", "b. tenant farmers", "c. female and child labor", "d. agricultural wage laborers", "e. deceptive investors"], "answer": "deceptive investors"}, {"id": 18, "question": "The process by which the Latin language and Roman culture became dominant in the western provinces is called", "choices": ["a. diasporianism", "b. Hellinization", "c. cultural imperialism", "d. dispersion", "e. Romanization"], "answer": "Romanization"}, {"id": 19, "question": "The Qin ruler took the title Shi Huangdi, which meant", "choices": ["a. \"Great Warrior\"", "b. \"Holy Man\"", "c. \"First Among Equals\"", "d. \"Big Emperor\"", "e. \"First Emperor\""], "answer": "\"First Emperor\""}, {"id": 20, "question": "The engineering expertise of the Romans is seen in all of these except:", "choices": ["a. arches", "b. gothic cathedrals", "c. fortifications", "d. aqueducts", "e. roads"], "answer": "gothic cathedrals"}, {"id": 21, "question": "Starting with the reign of Augustus, the Roman army was reorganized and redeployed to", "choices": ["a. shift from an offensive to a defensive strategy", "b. invade Russia", "c. face the threat from the Parthian Empire.", "d. allow non-Romans into the military", "e. fight several civil wars against other Romans"], "answer": "shift from an offensive to a defensive strategy"}, {"id": 22, "question": "The conquest of the Celtic peoples of Gaul was accomplished by this famous Roman general by 51 B.C.E.", "choices": ["a. Remus", "b. Marcus Aurelius", "c. Gaius Julius Caesar", "d. Octavian", "e. Romulus"], "answer": "Gaius Julius Caesar"}, {"id": 23, "question": "According to the Confucius philosopher Mencius, proper female behavior was exemplified by the:", "choices": ["a. three submissions", "b. three wise gods", "c. three flowers", "d. three trials", "e. three virtues"], "answer": "three submissions"}, {"id": 24, "question": "What was one of the most important reasons for the economic decline in the third century C.E.?", "choices": ["a. invasions of the Huns", "b. the transition to a wage economy", "c. reduced amount of precious metals in the coins by the emperors", "d. massive crop failures", "e. inability to efficiently collect taxes within the empire"], "answer": "reduced amount of precious metals in the coins by the emperors"}, {"id": 25, "question": "Which of the following was the most common pattern to Roman expansion?", "choices": ["a. The desire to acquire buffer zones protecting them from attack by enemies", "b. The short term of office of the Consuls in the senate", "c. The presence of a large, well maintained army", "d. Aggressive fans of war in Rome", "e. The mandate to impose their religion on neighboring regions"], "answer": "The desire to acquire buffer zones protecting them from attack by enemies"}, {"id": 26, "question": "Which of the following was the primary reason for the fall of the Qin Empire upon the death of Shi Huangdi?", "choices": ["a. Incorporation in the empire of different ethnicities", "b. Shi Huangdi's son was a weak ruler", "c. Oppressive labor requirements of the population for military and infrastructure building.", "d. Unification of the nomads under Maodun", "e. The provincial aristocracy was complacent"], "answer": "Shi Huangdi's son was a weak ruler"}, {"id": 27, "question": "Why was becoming Christian considered an act of disloyalty in the Roman Empire?", "choices": ["a. Christians could not worship the emperor as a deity", "b. Rome had a strong monotheistic tradition", "c. Rome required all citizens to learn about all world religions", "d. Christian theology demanded that all people live in a Christian utopia", "e. One of Christianity's aims was to overthrow dictators"], "answer": "Christians could not worship the emperor as a deity"}, {"id": 28, "question": "Jesus Christ, executed by the Roman authorities as a revolutionary, was seen by his early followers, the Apostles, as:", "choices": ["a. a military leader", "b. the Messiah", "c. a philosopher", "d. a demi-god", "e. a rabbi"], "answer": "the Messiah"}, {"id": 29, "question": "The main reason for the decline of the Roman Republic was", "choices": ["a. political decentralization", "b. the subversive effect of increasingly popular monotheistic religions", "c. military leaders with armies loyal to them rather than to the state", "d. an impoverished population", "e. ongoing wars in trying to expand to an empire"], "answer": "military leaders with armies loyal to them rather than to the state"}, {"id": 30, "question": "During the Republic, Romans managed their conquered territories by", "choices": ["a. establishing a system of satrapies and using local leaders to enforce Roman power", "b. nonoccupation and little interaction other than tax collection", "c. establishing a provincial administration and sending a Roman senator to oversee matters", "d. dispatching the army to occupy the area and bring the locals into line", "e. brutal domination and conquest, enslaving local populations"], "answer": "establishing a provincial administration and sending a Roman senator to oversee matters"}, {"id": 31, "question": "How did Gaozu, the rebel leader who brought down the Qin empire, deal with the Xiongnu confederation threat?", "choices": ["a. he adopted a policy of appeasement", "b. he incorporated them into the Han empire", "c. none of these", "d. he took a massive army north and defeated them soundly", "e. he formed an alliance with Mongols to wipe them out"], "answer": "he adopted a policy of appeasement"}, {"id": 32, "question": "What factor caused a decrease in small farms in the Late Roman Republic?", "choices": ["a. Increased urbanization in the centralized Republic", "b. An economy primarily based on trade with the East", "c. Deforestation", "d. The growth of latifundia and a shift to nonstaple crops", "e. Wars that devastated land and made farming difficult"], "answer": "The growth of latifundia and a shift to nonstaple crops"}, {"id": 33, "question": "Who reformed Rome in the third century C.E. and saved it from decline?", "choices": ["a. Brucellosis", "b. Claudius", "c. Diocletian", "d. Constantine", "e. Tiberius"], "answer": "Diocletian"}, {"id": 34, "question": "How is the career of Paul an example of the \"cosmopolitan\" nature of the Roman Empire?", "choices": ["a. He was able to use the benefits of Roman citizenship, roads, and cities to spread Christianity", "b. He only converted Romans to Christianity", "c. He refused to debase himself by using anything Roman", "d. He limited his proselytizing to urban areas", "e. He found that both Jews and Christians readily accepted his views of Jesus as the Messiah"], "answer": "He was able to use the benefits of Roman citizenship, roads, and cities to spread Christianity"}, {"id": 35, "question": "The emperor responsible for the reorganization of the Roman government after 31 B.C.E. went by the honorific name of:", "choices": ["a. Nero", "b. Augustus", "c. Caligula", "d. Julius Caesar", "e. Claudius"], "answer": "Augustus"}, {"id": 36, "question": "As a result of two prolonged wars with this rival, the Romans became the unmatched power of the Western Mediterranean by 200 B.C.E.", "choices": ["a. Scythians", "b. Carthage", "c. Persia", "d. Israel", "e. Lebanon"], "answer": "Carthage"}, {"id": 37, "question": "Which statement is true about Roman women?", "choices": ["a. They were powerless and virtually slaves in their own homes", "b. They were required to provide ten years of military service", "c. They had no say in family matters", "d. They were equal to Roman men", "e. They were viwed as a child in the eyes of the law"], "answer": "They were viwed as a child in the eyes of the law"}, {"id": 38, "question": "One of the great construction projects of Shi Huang-di was:", "choices": ["a. an elaborate irrigation system in the Northern provinces", "b. The canal system", "c. a system of interconnected roads", "d. connection of walls which ultimately made up The Great Wall", "e. the Forbidden City palace"], "answer": "connection of walls which ultimately made up The Great Wall"}, {"id": 39, "question": "The essential economic activity of the early Roman state was based on", "choices": ["a. the military", "b. mining", "c. fishing", "d. mercantilism", "e. agriculture"], "answer": "agriculture"}, {"id": 40, "question": "Which of the following was not a tactic used to re-centralize power under the Qin?", "choices": ["a. a return to Confucianist values", "b. standardized weights and measures", "c. elimination of primogeniture", "d. eliminating rival centers of authority", "e. a code of law"], "answer": "a return to Confucianist values"}, {"id": 41, "question": "Which of the following were the more important Han innovations?", "choices": ["a. alcohol, the wheel, and glass", "b. the saddle, penicillin, and bronze", "c. the wheel, the stirrup, and the pulley", "d. the canal, the three-field system, and concrete", "e. the horse collar, the watermill, and the crossbow"], "answer": "the horse collar, the watermill, and the crossbow"}, {"id": 42, "question": "The covenant of protection between the gods and the Romans was called:", "choices": ["a. pax deorum", "b. lex cannulaia", "c. articus fidele", "d. pax romana", "e. dvoeverie"], "answer": "pax deorum"}], "quiz4": [{"id": 1, "question": "Critical to the functioning of the Silk Road were:", "choices": ["a. Steppe agriculturalists who sold food products to travelers", "b. imperial guards from various kingdoms along the way for protection of merchants", "c. Ferengi merchants who initiated standardized currency rates", "d. water merchants in the central Asian desert", "e. pastoralists who provided animals, handlers and protection along the road"], "answer": "pastoralists who provided animals, handlers and protection along the road"}, {"id": 2, "question": "Ships in the Indian Ocean Maritime System were better prepared for long-distance travel than the Greeks because", "choices": ["a. Greek ships used square sails, which weighed more", "b. they could take advantage of monsoon winds to drive their ships using triangular lateen sails", "c. the Asian ships weren't nailed together and sank less often", "d. the Greeks had to cover a larger amount of territory for colonies to support their homeland", "e. the Greeks were not interested in long-distance trade"], "answer": "they could take advantage of monsoon winds to drive their ships using triangular lateen sails"}, {"id": 3, "question": "Family life in the Indian Ocean coastal areas was considered more cosmopolitan because", "choices": ["a. it was wealthier", "b. they were monotheistic", "c. they were not economically tied to agriculture", "d. blended families were bicultural and bilingual", "e. women were allowed to hold political offices"], "answer": "blended families were bicultural and bilingual"}, {"id": 4, "question": "One difference between Indian Ocean and Mediterranean seafaring was that", "choices": ["a. Indian Ocean ships were not as solidly built", "b. Mediterranean ships relied on lateen sails", "c. Mediterranean seamen were interested only in economic gains", "d. Mediterranean seamen rarely sailed far from shore", "e. Indian Ocean traders usually established colonies"], "answer": "Mediterranean seamen rarely sailed far from shore"}, {"id": 5, "question": "Why was maritime trade better in Southeast Asia than in Western Asia?", "choices": ["a. There were no women in port cities, so sailors didn't want to stop there", "b. Ports had better access to fresh water and could sustain a permanent settlement", "c. Religious differences did not allow trade between cultures", "d. There were more monsoons in the western part of Asia", "e. There were more mountains in western Asia and fewer ports"], "answer": "Ports had better access to fresh water and could sustain a permanent settlement"}, {"id": 6, "question": "The Indian Ocean Maritime System forged economic and social ties between Southeast Asia, China, India, Arabia and", "choices": ["a. Russia", "b. Egypt", "c. Greece", "d. Morocco", "e. East Africa"], "answer": "East Africa"}, {"id": 7, "question": "What natural resource provided the incentive to trade for southern Saharan dwellers?", "choices": ["a. Salt", "b. Caffeine", "c. Figs", "d. Palm oil", "e. Cotton"], "answer": "Salt"}, {"id": 8, "question": "General Zhang Jian is credited with travelling across the deserts and mountains of Central Asia on behalf of Emperor Wu of which empire?", "choices": ["a. Persian", "b. Chin", "c. Mauryan", "d. Babylonian", "e. Han"], "answer": "Han"}, {"id": 9, "question": "Africa is the home to approximately how many languages, emphasizing its diversity?", "choices": ["a. 500", "b. 250", "c. 2500", "d. 2000", "e. 1000"], "answer": "2000"}, {"id": 10, "question": "The source of the Saharan horse breeders were", "choices": ["a. escaped slaves from Egypt", "b. and still are a mystery", "c. related to the Greeks", "d. nomads from the Central Asian steppes", "e. intrepid caravans from Mali"], "answer": "and still are a mystery"}, {"id": 11, "question": "According to a theory for explaining significant migration patterns and cultural unity in the sub-Saharan areas, populations moved into the Sahel because of", "choices": ["a. climate change in the Sahara", "b. religious persecution", "c. protection from invaders", "d. war", "e. better natural resources"], "answer": "climate change in the Sahara"}, {"id": 12, "question": "The best primary evidence of early Saharan history consists of", "choices": ["a. the diary of a wandering Islamic scholar", "b. accounts by European travelers", "c. the oral histories of Saharan nomads", "d. histories written on papyrus", "e. a vast number of rock paintings and engravings"], "answer": "a vast number of rock paintings and engravings"}, {"id": 13, "question": "The early inhabitants of the East African island of Madagascar came from", "choices": ["a. the Persian Gulf and Mesopotamia", "b. Ethiopia and Arabia", "c. the Indian subcontinent", "d. the dense forests of Central Africa", "e. the islands of Southeast Asia"], "answer": "the islands of Southeast Asia"}, {"id": 14, "question": "The agricultural area bordering the Sahara Desert is called the Sahel, which in Arabic literally means", "choices": ["a. almost-desert", "b. prairie and plains", "c. the coast", "d. a lush paradise", "e. dry pastureland"], "answer": "the coast"}, {"id": 15, "question": "The mariners involved in the Indian Ocean trade were", "choices": ["a. almost exclusively of Indian background", "b. primarily Arabic and Persian", "c. a multilingual and multiethnic group", "d. all Africans from the sub-Saharan region", "e. from many lands, but all were Muslim"], "answer": "a multilingual and multiethnic group"}, {"id": 16, "question": "The development of metallurgy in Africa involved the smelting of this in the early first millennium C.E.", "choices": ["a. steel", "b. bronze", "c. mercury", "d. silver", "e. iron"], "answer": "iron"}, {"id": 17, "question": "The importance of trans-Saharan trade, though slow to begin and supplemented by Indian Ocean trade, was that it", "choices": ["a. spread Islam as a unifying force", "b. connected North and South Africa", "c. was conducted by people speaking derivatives of Berber", "d. linked the Silk Road to the Sand Routes", "e. allowed expansion of the Mediterranean trade market for African gold"], "answer": "connected North and South Africa"}, {"id": 18, "question": "One of the greatest promoters of Buddhism was", "choices": ["a. Zuanzang of China", "b. Alexander the Great", "c. Emperor Darius of Persia", "d. in the Tang dynasty of China", "e. King Ashoka of India"], "answer": "King Ashoka of India"}, {"id": 19, "question": "Which of the following is not an example of a broad common element underlying African life and culture?", "choices": ["a. Concepts of kingship", "b. Cultivation by hoe and digging stick", "c. Distinctive musical characteristics", "d. Fixed social categories", "e. A common language"], "answer": "A common language"}, {"id": 20, "question": "The earliest long-distance traders in the Sogdiana area were the", "choices": ["a. Mongolians", "b. Ferghanese", "c. Mamluks", "d. Chinese", "e. Armenians"], "answer": "Ferghanese"}, {"id": 21, "question": "The most convincing evidence indicates that camels were introduced to the Sahara from", "choices": ["a. Arabia", "b. North Africa and the Mediterranean coast", "c. West Africa", "d. they used camels indigenous to the area", "e. India, via the Indian Ocean trade"], "answer": "Arabia"}, {"id": 22, "question": "The traders of the Indian Ocean, where distances were greater and contacts less frequent", "choices": ["a. kept strong ties to their homelands", "b. did not tend to be multilingual", "c. rarely strayed far from the shorelines", "d. seldom retained political ties with their homelands"], "answer": "seldom retained political ties with their homelands"}, {"id": 23, "question": "In the fourth century c.e., the head of the Ethiopian Christian church was appointed by", "choices": ["a. the pope", "b. the College of Cardinals", "c. the patriarch of Alexandria", "d. the Ethiopian prime minister", "e. the Episcopal Council"], "answer": "the patriarch of Alexandria"}, {"id": 24, "question": "The Silk Road and Indian Ocean trade were most influential in fostering the spread of which religion?", "choices": ["a. Judaism", "b. Sikhism", "c. Shinto", "d. Jainism", "e. Buddhism"], "answer": "Buddhism"}, {"id": 25, "question": "Most sub-Saharan languages come from one giant linguistic family, called", "choices": ["a. Niger-Kongo", "b. Sudanese-Zulu", "c. Semitic", "d. Swahili", "e. Bantu"], "answer": "Bantu"}, {"id": 26, "question": "Scythians were fearsome horse archers, and they were noted to live in what form of dwelling?", "choices": ["a. tree houses", "b. log cabins", "c. portable felt huts", "d. subterranean caverns", "e. mud-brick fortresses"], "answer": "portable felt huts"}, {"id": 27, "question": "The trans-Saharan trade routes would not have been possible were it not for the domestication of", "choices": ["a. Horses", "b. Llamas", "c. Donkeys", "d. Cows", "e. Camels"], "answer": "Camels"}, {"id": 28, "question": "The most important African network of cultural exchange from 300 B.C.E to 1100 C.E. can be described as", "choices": ["a. the trade across the Sahara", "b. the link with Islamic Arabia", "c. mainly internal folk migrations within sub-Saharan Africa", "d. taking place only in North Africa", "e. the Indian Ocean network"], "answer": "mainly internal folk migrations within sub-Saharan Africa"}, {"id": 29, "question": "What military technologies did the Silk Road spread?", "choices": ["a. Chariots, Greek fire, and gunpowder", "b. The lance, chain mail, and gunpowder", "c. The war elephant, hardtack, and Arabian horses", "d. Chariot warfare, mounted bowmen, and the stirrup", "e. The field hospital, the broadsword, and the poison arrow"], "answer": "Chariot warfare, mounted bowmen, and the stirrup"}, {"id": 30, "question": "Buddhism, Christianity, and Islam all spread", "choices": ["a. only to their neighboring countries", "b. predominantly by warfare", "c. without dependency on a single ethnic or kinship group", "d. only within their own countries until the nineteenth century", "e. most often by the use of missionaries, generally sponsored by the government"], "answer": "without dependency on a single ethnic or kinship group"}, {"id": 31, "question": "Which of the following does not constitute a shared cultural heritage, or what anthropologists classify as \"great traditions\"?", "choices": ["a. Ethical codes", "b. Intellectual traditions", "c. Common legal and belief systems", "d. Political unity", "e. A written language"], "answer": "Political unity"}, {"id": 32, "question": "The savannah region of Africa was characterized by", "choices": ["a. tropical rain forests", "b. desert", "c. long grasses and scattered forests", "d. lush oases with water and palm trees", "e. semiarid steppes"], "answer": "long grasses and scattered forests"}, {"id": 33, "question": "What facilitated the spread of Christianity to Armenia?", "choices": ["a. The creation of new Christian myths that included Armenian folklore", "b. The excellent management of the Christian church", "c. The invention of an Armenian alphabet in the early fifth century", "d. The prejudices against Buddhist monks in the cities", "e. The high taxation of non-Christians in Armenia"], "answer": "The invention of an Armenian alphabet in the early fifth century"}], "quiz5": [{"id": 1, "question": "The scholar Nasir al-Din Tusi, who wrote on history, poetry, ethics and religion, was most notable for his contributions in", "choices": ["a. mathematical developments in algebra and trigonometry.", "b. poetry written in Persian.", "c. an encompassing world history.", "d. cartography.", "e. translation of philosophy."], "answer": "mathematical developments in algebra and trigonometry."}, {"id": 2, "question": "To maintain control of vast areas, the Mongols formed different khanates. The Golden Horde ruled over Russia and the Chagatai ruled over", "choices": ["a. Central Asian domains.", "b. Japan.", "c. India.", "d. Korea.", "e. Russia."], "answer": "Central Asian domains."}, {"id": 3, "question": "Traditions relating the deeds and words of prophet Muhammad which, next to the Qur'an, are the most importance source for Islamic law, are called", "choices": ["a. ulama", "b. none of these", "c. umma", "d. shari'a", "e. hadith"], "answer": "hadith"}, {"id": 4, "question": "The foundation of Islamic civilization is the Shari'a, or", "choices": ["a. community.", "b. literature.", "c. law.", "d. philosophy.", "e. taxes."], "answer": "law."}, {"id": 5, "question": "Despite the fact that conversions to Islam were at their peak, Abbasid power declined because", "choices": ["a. there were frequent religious wars between the Sunnis and Shi'ites.", "b. the empire had to resist nomadic pressures on the frontier.", "c. the empire had become too big to rule effectively.", "d. new religious practices developed that challenged the appeal of Islam.", "e. there were constant revolts of non-Muslims against forced conversion."], "answer": "the empire had become too big to rule effectively."}, {"id": 6, "question": "Prophet Muhammad's revelations from the angel are compiled in a book called", "choices": ["a. the Quran.", "b. the Third Testament.", "c. the Revelations.", "d. the Hadith.", "e. the Ka'ba."], "answer": "the Quran."}, {"id": 7, "question": "The unified community that accepted Islam and believed that Muhammad was the \"Messenger of God\" was called the", "choices": ["a. umma.", "b. shaitan.", "c. jihad.", "d. ka'ba.", "e. hijra."], "answer": "umma."}, {"id": 8, "question": "Which of the Mongol Khans attacked Russian territories and took control of towns along the Volga?", "choices": ["a. Batu", "b. Ögödei", "c. Genghis", "d. Güyük", "e. Khubilai"], "answer": "Batu"}, {"id": 9, "question": "After rejection by his family for the title of Great Khan, Khubilai formed", "choices": ["a. the Yuan Empire in China and Siberia.", "b. the Golden Horde.", "c. he was assassinated by political rivals.", "d. the Central Asian Khanate.", "e. Il-Khan Empire of Iran."], "answer": "the Yuan Empire in China and Siberia."}, {"id": 10, "question": "In 1368, the Yuan Empire was overthrown and replaced by the", "choices": ["a. Ming Empire.", "b. Song Empire.", "c. Tang Empire.", "d. Yi Kingdom.", "e. Manchu Empire."], "answer": "Ming Empire."}, {"id": 11, "question": "What did the Sasanid and Byzantine Empires have in common?", "choices": ["a. a shared distaste for Christianity.", "b. dependence on camels", "c. societal unrest because of religious heterogeneity.", "d. a military emphasis on cavalry", "e. central control of imperial finances."], "answer": "central control of imperial finances."}, {"id": 12, "question": "Why did the rulers of al-Andalus Spain finally take the title of caliph in 929?", "choices": ["a. They did so in response to the Fatimids assuming this title in Tunisia.", "b. The growing number of converts to Islam demanded it.", "c. They never did.", "d. They had finally solidified control of the region.", "e. Christians in northern Spain threatened invasion."], "answer": "They did so in response to the Fatimids assuming this title in Tunisia."}, {"id": 13, "question": "The rise of literacy in Korea resulted from the", "choices": ["a. spread of woodblock printing from China and the Mongol writing system.", "b. combination of an improved printing system and the han'gul writing system.", "c. popularity of Islam, which required that all Muslims read the Quran.", "d. imposition of Japanese rule, which forced the formation of public schools.", "e. institution of a university system."], "answer": "combination of an improved printing system and the han'gul writing system."}, {"id": 14, "question": "Despite political decay in al-Andalus, under Islamic leadership, the Jewish people of Spain", "choices": ["a. experienced a diaspora to eastern Europe.", "b. experienced widespread discrimination.", "c. were frequently arrested and persecuted.", "d. contributed to the cultural growth of Spain as great thinkers and writers, such as Maimonides.", "e. passed laws ensuring the ascension of Jews to the Spanish throne."], "answer": "contributed to the cultural growth of Spain as great thinkers and writers, such as Maimonides."}, {"id": 15, "question": "In 1295, the Il-khan ruler Ghazan converted to which religion?", "choices": ["a. Buddhism", "b. Christianity", "c. Islam", "d. Shinto", "e. Judaism"], "answer": "Islam"}, {"id": 16, "question": "Menial work in Mongol camps was done by", "choices": ["a. children.", "b. slaves", "c. women", "d. all of these.", "e. gendered division of labor"], "answer": "slaves"}, {"id": 17, "question": "The Mongol leader, the khan,", "choices": ["a. had no power to make decisions but retained a veto.", "b. had absolute power in decision making.", "c. deferred to the Mongol Parliament.", "d. was a figurehead only.", "e. had his decisions ratified by a council."], "answer": "had his decisions ratified by a council."}, {"id": 18, "question": "Which group held the lowest social rank in Yuan China?", "choices": ["a. Southern Chinese", "b. Northern Chinese", "c. Middle Easterners", "d. Mongols", "e. Central Asians"], "answer": "Southern Chinese"}, {"id": 19, "question": "The capital of the Umayyad caliphate was in", "choices": ["a. Antioch", "b. Baghdad", "c. Ephesus", "d. Mecca.", "e. Damascus"], "answer": "Damascus"}, {"id": 20, "question": "After prophet Muhammad's death, the Muslim community", "choices": ["a. chose a successor (caliph), Abu Bakr.", "b. searched the entire peninsula for a suitable successor, according to prophet Muhammad's last instructions.", "c. held general elections to replace prophet Muhammad.", "d. abandoned the orthodox teachings of Islam.", "e. embraced his wife, Khadija, as his successor."], "answer": "chose a successor (caliph), Abu Bakr."}, {"id": 21, "question": "What does Islam call on people to believe?", "choices": ["a. All of these.", "b. That the Qur'an is the revelation of Allah.", "c. That they must surrender to the will of God.", "d. That Islam is the one true religion.", "e. That Allah will reward or punish all people after death."], "answer": "All of these."}, {"id": 22, "question": "Muslim means", "choices": ["a. chosen for purity.", "b. the one true religion.", "c. first followers.", "d. holy people.", "e. one who submits to the will of God."], "answer": "one who submits to the will of God."}, {"id": 23, "question": "Why did Muhammad leave Mecca for Medina (known as the hijra, which marks the beginning of the Muslim calendar)?", "choices": ["a. Meccan leaders were threatened by his popularity.", "b. One of his visions commanded him to.", "c. Theology argued that Abraham had lived in the north.", "d. Muhammad's wife had family in Medina.", "e. He sought more followers in the north."], "answer": "Meccan leaders were threatened by his popularity."}, {"id": 24, "question": "The Sasanid Empire benefited from its location along the Silk Road. Some of the agricultural goods that it gained from China and East Asia were", "choices": ["a. sugar, wheat, and figs.", "b. eggplants, sugar, and rice.", "c. wheat, jute, and coffee beans.", "d. oats, quinoa, and manioc.", "e. mangoes, bananas, and spelt."], "answer": "eggplants, sugar, and rice."}, {"id": 25, "question": "The emperor Yongle improved the imperial complex built by the Mongols, called the", "choices": ["a. Heavenly Gates.", "b. Imperial House.", "c. Red Square.", "d. Forbidden City.", "e. Dragon's Court."], "answer": "Forbidden City."}, {"id": 26, "question": "In 1453, the Ottomans led by Sultan Mehmet II captured which important Christian city of the Byzantine Empire?", "choices": ["a. Vienna", "b. Paris", "c. Constantinople", "d. Kiev", "e. Budapest"], "answer": "Constantinople"}, {"id": 27, "question": "The Russian prince who advocated cooperation with the Mongols to avoid destructive assimilation was", "choices": ["a. Vladimir the Viking.", "b. Alexander Nevskii.", "c. Dmitri Donskoi.", "d. Grigorii Preobrazhenskii.", "e. Ivan III."], "answer": "Alexander Nevskii."}, {"id": 28, "question": "Who attempted to write the first world history?", "choices": ["a. The Abbasid caliph", "b. Marco Polo", "c. Ibn Battuta", "d. Ivan III", "e. Rashid al-Din"], "answer": "Rashid al-Din"}, {"id": 29, "question": "The decline of the Umayyad dynasty was due to", "choices": ["a. the arrival of a Jewish messiah.", "b. converts to Islam numbered no more than 10 percent.", "c. none of these.", "d. a peasant revolt over increases in taxes and decreases in wages.", "e. growing unrest among non-Arab Muslims, who demanded access to political power."], "answer": "growing unrest among non-Arab Muslims, who demanded access to political power."}, {"id": 30, "question": "As a result of the Il-Khan attempt to repel them in the Crimean/Caucases areas, the Golden Horde formed an alliance with:", "choices": ["a. Buddhists in India.", "b. Persian Muslims.", "c. Seljuk Turks.", "d. Egyptian Mamluks.", "e. Byzantine (Ottoman) Janissary forces."], "answer": "Egyptian Mamluks."}, {"id": 31, "question": "Ming China didn't develop seafaring for commercial and military because commercial maritime expectations fell short and:", "choices": ["a. The peasantry were a strong voting lobby and refused to support it.", "b. The merchants were opposed to losing their domestic markets.", "c. The emperor feared outside contacts and influence.", "d. The Japanese merchants undercut the market and stole China's trading partners.", "e. The Mongol threat from the north and west took priority over seafaring."], "answer": "The Mongol threat from the north and west took priority over seafaring."}, {"id": 32, "question": "The Arabs' involvement in Byzantine and Sasanid conflicts led to the penetration of these religions into the Arabian peninsula.", "choices": ["a. Judaism and Christianity", "b. Christianity and Buddhism", "c. Zoroastrianism and Christianity", "d. Zoroastrianism and Buddhism", "e. Judaism and Buddhism"], "answer": "Zoroastrianism and Christianity"}, {"id": 33, "question": "Which Russian ruler was the first to use the term \"tsar\" (Latin for caesar)?", "choices": ["a. Alexander Nevskii", "b. Catherine the Great", "c. Ivan IV", "d. Ivan III", "e. Peter the Great"], "answer": "Ivan III"}, {"id": 34, "question": "After the city of Mecca surrendered to prophet Muhammad, he established a new state based on a", "choices": ["a. government system similar to the Persian administration.", "b. dynastic system with his sons as the monarchs.", "c. loose coalition of Arab city-states.", "d. democratic government system.", "e. common religious faith."], "answer": "common religious faith."}, {"id": 35, "question": "A significant transmission and sharing of scientific knowledge originating in the Middle East and reaching Europe and India was found in the form of:", "choices": ["a. eclipse predictions and tables.", "b. networked astronomical observatories.", "c. a centralized library of shared knowledge at Tabriz.", "d. Uigher calendar calculations.", "e. formulas for alchemical processes."], "answer": "eclipse predictions and tables."}, {"id": 36, "question": "Why is the Abbasid rule considered a \"golden age\"?", "choices": ["a. It created a refined and cosmopolitan culture in Baghdad.", "b. It used the golden cow as the focus of religious worship.", "c. It used gold as the standard coinage throughout the empire.", "d. The Spanish region was considered the golden frontier.", "e. It is marked by the rule of the \"golden\" monarch, Abu Bakr."], "answer": "It created a refined and cosmopolitan culture in Baghdad."}, {"id": 37, "question": "The establishment of Zoroastrianism and Christianity as official faiths in the Sasanid and Byzantine empires (respectively) set the precedent for what future event?", "choices": ["a. The rejection of religion as an official political focus.", "b. The rise of corrupt leadership in those empires.", "c. The worldwide spread of Christianity.", "d. The rise of Islam as the focus of a political empire.", "e. The dominance of monotheism in all subsequent empires."], "answer": "The rise of Islam as the focus of a political empire."}, {"id": 38, "question": "Umayyad Spain developed a distinctive Islamic culture because of the", "choices": ["a. blending of Roman, Germanic, Jewish, Arab, and Berber traditions.", "b. blending of Islam with Roman traditions and Visigoth culture.", "c. Viking invasions of the ninth century.", "d. growing influence of Russian and Frankish traditions in Spain.", "e. decrease in Arab power combined with a growing Christian influence."], "answer": "blending of Roman, Germanic, Jewish, Arab, and Berber traditions."}, {"id": 39, "question": "One of the most significant effects of Mongol trade routes was the spread of diseases including", "choices": ["a. influenza.", "b. smallpox.", "c. all of these.", "d. typhus.", "e. bubonic plague."], "answer": "all of these."}, {"id": 40, "question": "One of the most prized commercial products of the Ming Empire was:", "choices": ["a. green or ginseng ink.", "b. wool.", "c. teakwood clocks.", "d. lightweight cannon.", "e. porcelain."], "answer": "porcelain."}, {"id": 41, "question": "Mongol rulers in China were increasingly influenced by the idea of a universal rulership model by religious leaders called lamas from", "choices": ["a. Japan.", "b. India.", "c. Tibet.", "d. Vietnam.", "e. Korea."], "answer": "Tibet."}, {"id": 42, "question": "Mu'awiya chose his own son, Yazid, to succeed him thereby establishing this caliphate.", "choices": ["a. Fatimid", "b. Mamluk", "c. Abbasid", "d. Umayyad", "e. none of these"], "answer": "Umayyad"}, {"id": 43, "question": "Religious conflicts in the Byzantine Empire resulted in treatment of Nestorian Christians as", "choices": ["a. outcasts from society who were unable to find jobs.", "b. heretics, seeking refuge under the Sasanid shah.", "c. holy, seeking the recovery of the holy lands through crusades.", "d. monks, seeking the true meaning of life in vows of poverty and chastity.", "e. converts to new faiths to avoid taxation."], "answer": "heretics, seeking refuge under the Sasanid shah."}, {"id": 44, "question": "Most subjects of both Byzantine and Sasanid rulers found common identity in", "choices": ["a. commerce.", "b. family kin groups.", "c. language.", "d. religion.", "e. occupations."], "answer": "religion."}, {"id": 45, "question": "Because Mongols controlled access to the Silk Road after the overthrow of the Yuan, the emperor Yongle put an emphasis on", "choices": ["a. maritime trade connecting with Southeast Asia and the Indian Ocean.", "b. trade through Buddhist monasteries.", "c. trans-Pacific exploration.", "d. none of these; trade decreased because people could not afford to travel by Silk Road and pay Mongol tariffs.", "e. overland trade through India and Arabia."], "answer": "maritime trade connecting with Southeast Asia and the Indian Ocean."}, {"id": 46, "question": "Which of the following statements is not true about the rule of the Seljuk Empire?", "choices": ["a. Seljuk leaders didn't get involved in internal religious fighting.", "b. Mesopotamia grew in population and influence.", "c. Cities shrank and lost population during their rule.", "d. Irrigation and canal systems fell into disrepair during their rule.", "e. They ruled the Middle East during the First Crusade."], "answer": "Mesopotamia grew in population and influence."}, {"id": 47, "question": "To demonstrate their rejection of the Mongols, the Ming emperors, starting with Hongwu,", "choices": ["a. marched all the Mongols to the Korean border.", "b. severed relations with the Middle East and Central Asia and closed the borders to foreigners.", "c. changed the official language from Mongolian to Chinese.", "d. formed close ties with the Manchu instead.", "e. built the Great Wall of China and deported all Mongols."], "answer": "severed relations with the Middle East and Central Asia and closed the borders to foreigners."}, {"id": 48, "question": "Benefits of Mongol rule in the Yuan Empire included all of the following EXCEPT", "choices": ["a. all of these", "b. transmission of knowledge and skills", "c. secure trade routes", "d. transition to tax farming instead of fixed rate method", "e. exchange of technical expertise between the East and West"], "answer": "transition to tax farming instead of fixed rate method"}, {"id": 49, "question": "Mongol armies often consisted of", "choices": ["a. Uighurs only.", "b. Chinese mercenaries.", "c. a multinational force with Mongol commanders.", "d. both male and female soldiers.", "e. ethnic Mongols only."], "answer": "a multinational force with Mongol commanders."}, {"id": 50, "question": "The Muslims fought the Battle of the Camel (656) in a dispute over the", "choices": ["a. compilation of the Quran.", "b. appointment of Abu Bakr.", "c. control of the royal treasury.", "d. Nestorian control of Yemenite lands.", "e. legitimacy of Ali as caliph."], "answer": "legitimacy of Ali as caliph."}, {"id": 51, "question": "The group of Muslims who believe the leader of Islam should be a descendant of prophet Muhammad's son-in-law is called the", "choices": ["a. Sunnis.", "b. Sufis.", "c. Hadj.", "d. Mobad.", "e. Shi'ites."], "answer": "Shi'ites."}, {"id": 52, "question": "The Mongol way of life, forced by a scarcity of resources, was largely", "choices": ["a. hunting and gathering.", "b. urbanized.", "c. pastoral.", "d. based on procurement.", "e. agricultural."], "answer": "pastoral."}, {"id": 53, "question": "Sufism was significant in being a", "choices": ["a. blending of Christian and Buddhist ideas into Islam.", "b. rejection of religious formalism.", "c. new doctrine that excluded the lower classes.", "d. quest for a direct union with God through rituals and training.", "e. attempt to convert more women to Islam."], "answer": "quest for a direct union with God through rituals and training."}, {"id": 54, "question": "What military techniques or innovations made the Choson military a formidable defensive force?", "choices": ["a. the development of poison gas canisters.", "b. compound bows and chain mail.", "c. phalanxes of soldiers deployed by rota.", "d. cannon with gunpowder-driven arrow launchers.", "e. battering rams and Trojan horses."], "answer": "cannon with gunpowder-driven arrow launchers."}, {"id": 55, "question": "The Abbasids purchased Turkic slaves, called mamluks, into military service. The mamluks eventually founded their own state in", "choices": ["a. Arabia.", "b. Egypt.", "c. Turkey.", "d. Iran.", "e. Spain."], "answer": "Egypt."}, {"id": 56, "question": "Why is the martyrdom of Husayn a significant event in Muslim history?", "choices": ["a. It marks the end of the Muslim expansion.", "b. It marks the beginning of Muslim expansion.", "c. It marks the beginning of the Islamic calendar.", "d. It marks the beginning of the sect of Shi'ism.", "e. It marks the anniversary of Jesus's crucifixion."], "answer": "It marks the beginning of the sect of Shi'ism."}, {"id": 57, "question": "Which of the following is an aspect of Mongol rule that created hardship and a sharp population decrease in China?", "choices": ["a. female infanticide", "b. Migration and flooding of the Yellow River", "c. Bubonic plague", "d. warfare", "e. all of these"], "answer": "all of these"}, {"id": 58, "question": "What economic problems did Russia see during the time of Mongol domination?", "choices": ["a. direct exchange of goods rather than purchases in currency.", "b. overzealous tax collection by Russian princes", "c. all of these.", "d. the burden of taxation carried by the peasantry.", "e. the attempt to introduce paper money by the Mongols."], "answer": "all of these."}, {"id": 59, "question": "How did the threat of Mongol invasion affect Japan?", "choices": ["a. Japanese clans took political control of their regions.", "b. Japanese monks were held hostage.", "c. Japanese merchants lost huge sums of money in the Mongolian markets.", "d. Japan reinstated direct imperial rule.", "e. The Japanese military government spent a lot of time building coastal defenses, and training and outfitting their warriors."], "answer": "The Japanese military government spent a lot of time building coastal defenses, and training and outfitting their warriors."}, {"id": 60, "question": "The ulama were religious scholars and", "choices": ["a. the primary interpreters of Islamic law.", "b. outcasts.", "c. rural leaders.", "d. government officials.", "e. a hired foreign military force."], "answer": "the primary interpreters of Islamic law."}, {"id": 61, "question": "Prophet Muhammad's teachings built upon the beliefs of", "choices": ["a. Judaism and Zoroastrianism.", "b. Judaism and Manichaeism.", "c. Judaism and Christianity.", "d. Judaism and Hinduism.", "e. Judaism and Buddhism."], "answer": "Judaism and Christianity."}, {"id": 62, "question": "One effect of the rise of cities in Yuan China was", "choices": ["a. the decline of the prestige of the warrior class.", "b. improved nutrition of the urban population.", "c. an interest in trade for the first time in China.", "d. the rise of a class of educated holy men.", "e. the increasing influence of Mandarin."], "answer": "the increasing influence of Mandarin."}, {"id": 63, "question": "The Byzantine Empire was centered in the area that is present-day Turkey, while the Sasanid Empire was centered in the area that is present-day", "choices": ["a. Iran.", "b. Egypt.", "c. Afghanistan.", "d. Lebanon.", "e. India."], "answer": "Iran."}, {"id": 64, "question": "Which of the following was NOT a contributing factor to Mongol military supremacy?", "choices": ["a. enormous conscripted armies to outnumber their enemies", "b. superior riding skills.", "c. catapults to hurl sometimes-flaming projectiles.", "d. flaming arrows", "e. more technically proficient bows."], "answer": "enormous conscripted armies to outnumber their enemies"}, {"id": 65, "question": "Which of the following statements about Muslim women is not true?", "choices": ["a. They were permitted to own property.", "b. They were permitted to practice birth control.", "c. They often played a role in public life.", "d. They adopted the Byzantine and Sasanid custom of veiling.", "e. They were permitted to divorce."], "answer": "They often played a role in public life."}, {"id": 66, "question": "Mecca was a late-blooming caravan city and", "choices": ["a. was the rival city to Jerusalem.", "b. was the birthplace of Abraham.", "c. was abundantly watered and needs no irrigation for crops.", "d. had an unusually cold climate for the Arabian peninsula.", "e. was a pilgrimage site of the Ka'ba."], "answer": "was a pilgrimage site of the Ka'ba."}, {"id": 67, "question": "Why was there a cultural flowering in Iran, Afghanistan, and Central Asia under the Timurids?", "choices": ["a. The Dutch tulip was a cultural catalyst between the two societies.", "b. Iran and China shared artistic trends and political ideas.", "c. The Timurids were schooled in art in Italy.", "d. The European style of the Renaissance reached Central Asia.", "e. Egyptian artisans migrated throughout Central Asia and the Middle East."], "answer": "Iran and China shared artistic trends and political ideas."}, {"id": 68, "question": "Manichaeism is a faith derived from Zoroastrianism and is founded on the idea that", "choices": ["a. Muhammad is the Prophet.", "b. there is a cosmic struggle between good and evil.", "c. people must attune themselves to nature.", "d. the universe is in cosmic balance.", "e. Jesus is the Savior."], "answer": "there is a cosmic struggle between good and evil."}, {"id": 69, "question": "The significant scientific discoveries of Islamic scholars were translated by", "choices": ["a. Byzantine monks into Greek.", "b. Christian scholars in Spain.", "c. Arabic scholars.", "d. all of these.", "e. Indian scholars in Delhi."], "answer": "all of these."}, {"id": 70, "question": "Mongol families often included believers in two or more religions, however, virtually all Mongols observed the practices of:", "choices": ["a. Atheism.", "b. Orthodox Christianity", "c. Buddhism.", "d. Islam.", "e. Shamanism."], "answer": "Shamanism."}, {"id": 71, "question": "Apparently envisioning himself as a new Genghis Khan, this ruler of the Chagatai Khanate attacked the Muslim sultanate of Delhi in 1398:", "choices": ["a. Jagadai", "b. Ghazan", "c. Juvaini", "d. H leg", "e. Timur"], "answer": "Timur"}, {"id": 72, "question": "Under this leader, the second caliph, began the expansion of the caliphate outside of Arabia.", "choices": ["a. Abu-Bakr", "b. Ali", "c. Umar", "d. Uthman", "e. Yazid"], "answer": "Umar"}, {"id": 73, "question": "The conflict between the Il-khans and the Golden Horde originated in", "choices": ["a. philosophical differences.", "b. political differences.", "c. economic differences.", "d. cultural differences.", "e. religious differences."], "answer": "religious differences."}, {"id": 74, "question": "Narratives such as Marco Polo's created a European", "choices": ["a. aversion to all things from Asia.", "b. isolationist mentality.", "c. image of Mongol poverty.", "d. ambition to find easier routes to Asia.", "e. fear of Mongol contact."], "answer": "ambition to find easier routes to Asia."}, {"id": 75, "question": "Political divisions continued after the fall of the Abbasid caliphate, and other groups took hold of the Middle East over several centuries, including Seljuk Turks, Crusaders, Mamluks, and eventually", "choices": ["a. Armenians", "b. Mongols", "c. Indians", "d. Byzantines", "e. Kurds"], "answer": "Mongols"}, {"id": 76, "question": "Which of the following did the Europeans not learn about from the Mongols, but rather from the Ming Chinese?", "choices": ["a. Movable type and bronze cannon", "b. Gunpowder and high-temperature metallurgy", "c. Porcelain", "d. Coal mining and higher mathematics", "e. Diplomatic passports"], "answer": "Porcelain"}, {"id": 77, "question": "In the Yuan Empire, the Mongols were the warriors, and the Central Asians and the Middle Easterners were the census takers and the", "choices": ["a. rulers.", "b. commanders.", "c. priests.", "d. farmers.", "e. tax collectors."], "answer": "tax collectors."}, {"id": 78, "question": "Byzantine power was significantly diminished by the Seljuks as a result of", "choices": ["a. the Battle of Manzikert", "b. the Seljuk's alliance with the Mamluks.", "c. the failure of the First Crusade.", "d. the Byzantine alliance with the Buyids.", "e. the Schism of 1054."], "answer": "the Battle of Manzikert"}, {"id": 79, "question": "Which of the following areas was not brought under Muslim control under the leadership of the caliphs?", "choices": ["a. Egypt and North Africa", "b. Eastern Europe", "c. Syria", "d. Spain", "e. The Indus Valley"], "answer": "Eastern Europe"}, {"id": 80, "question": "How did prophet Muhammad experience revelations?", "choices": ["a. Reading the Bible.", "b. Many years of religious study in a mosque.", "c. Being possessed by a shaitan.", "d. Dreaming about Ishmael from the Old Testament.", "e. From the Angel Gabriel."], "answer": "From the Angel Gabriel."}, {"id": 81, "question": "The first Mongol conquests under Genghis Khan were in", "choices": ["a. Egypt.", "b. Central Asia, the Middle East, and Russia.", "c. Northern China.", "d. Japan and Korea.", "e. Annam."], "answer": "Northern China."}, {"id": 82, "question": "Muslim religious practice is based on the", "choices": ["a. Eightfold Path.", "b. Ten Commandments.", "c. Three Goals to Salvation.", "d. Five Pillars.", "e. Four Noble Truths."], "answer": "Five Pillars."}]};
+
+
+const CHAPTER_NAMES = {
+  quiz1: "Quiz 1 — Early Civilizations",
+  quiz2: "Quiz 2 — Bronze Age & Israel",
+  quiz3: "Quiz 3 — Rome & Han China",
+  quiz4: "Quiz 4 — Silk Road & Africa",
+  quiz5: "Quiz 5 — Islam & Mongols",
+};
+const CHAPTER_KEYS = Object.keys(QUIZ_DATA);
+
+// ══════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════
+let state = loadState();
+let currentMode = null;   // "quiz1"..."quiz5" or "all"
+let currentPool = [];
+let currentQ = null;
+let answered = false;
+let sessionCorrect = 0;
+let sessionTotal = 0;
+let batchCorrect = 0;
+let batchTotal = 0;
+
+function freshState() {
+  return {
+    weights: {},     // key -> weight
+    seen: {},        // key -> times seen
+    correct: {},     // key -> times correct
+    streak: 0,
+    bestStreak: 0,
+    totalAnswered: 0,
+    totalCorrect: 0,
+  };
+}
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem("quizzer_state"));
+    if (s && s.weights) return s;
+  } catch {}
+  return freshState();
+}
+function saveState() { localStorage.setItem("quizzer_state", JSON.stringify(state)); }
+function qKey(mode, q) { return mode + ":" + q.id; }
+
+// ══════════════════════════════════════════════════════════════════════
+// SPACED REPETITION
+// ══════════════════════════════════════════════════════════════════════
+function getWeight(key) { return state.weights[key] ?? 1; }
+
+function weightedPick(pool, modePrefix) {
+  const weights = pool.map(q => getWeight(modePrefix + q._srcChapter + ":" + q.id));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return pool[i];
+  }
+  return pool[pool.length - 1];
+}
+
+function updateWeight(key, correct) {
+  const w = getWeight(key);
+  if (correct) {
+    state.weights[key] = Math.max(0.5, w * 0.5);
+    state.streak++;
+    if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+    state.totalCorrect++;
+  } else {
+    state.weights[key] = Math.min(20, w * 3);
+    state.streak = 0;
+  }
+  state.seen[key] = (state.seen[key] || 0) + 1;
+  if (correct) state.correct[key] = (state.correct[key] || 0) + 1;
+  state.totalAnswered++;
+  saveState();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HOME SCREEN
+// ══════════════════════════════════════════════════════════════════════
+function renderHome() {
+  const grid = document.getElementById("home-grid");
+  grid.innerHTML = "";
+
+  CHAPTER_KEYS.forEach(key => {
+    const qs = QUIZ_DATA[key];
+    const mastered = qs.filter(q => getWeight(key + ":" + q.id) < 0.6).length;
+    const pct = qs.length ? Math.round(mastered / qs.length * 100) : 0;
+    const card = document.createElement("div");
+    card.className = "quiz-card glass";
+    card.onclick = () => startQuiz(key);
+    card.innerHTML = `
+      <div class="card-num">${key.replace("quiz", "Chapter ")}</div>
+      <div class="card-title">${CHAPTER_NAMES[key].split("—")[1]?.trim() || CHAPTER_NAMES[key]}</div>
+      <div class="card-sub">${qs.length} questions</div>
+      <div class="card-mastery">
+        ✅ ${mastered}/${qs.length} Mastered
+        <div class="mastery-bar"><div class="mastery-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // All chapters card
+  const allCount = CHAPTER_KEYS.reduce((s, k) => s + QUIZ_DATA[k].length, 0);
+  const allMastered = CHAPTER_KEYS.reduce((s, k) =>
+    s + QUIZ_DATA[k].filter(q => getWeight(k + ":" + q.id) < 0.6).length, 0);
+  const allPct = allCount ? Math.round(allMastered / allCount * 100) : 0;
+
+  const allCard = document.createElement("div");
+  allCard.className = "quiz-card glass";
+  allCard.style.background = "linear-gradient(135deg,rgba(129,140,248,.08),rgba(168,85,247,.06))";
+  allCard.onclick = () => startQuiz("all");
+  allCard.innerHTML = `
+    <div class="card-num" style="color:#c084fc">All Chapters</div>
+    <div class="card-title">Combined Review</div>
+    <div class="card-sub">${allCount} questions across 5 chapters</div>
+    <div class="card-mastery">
+      ✅ ${allMastered}/${allCount} Mastered
+      <div class="mastery-bar"><div class="mastery-bar-fill" style="width:${allPct}%;background:linear-gradient(90deg,#c084fc,#a78bfa)"></div></div>
+    </div>
+  `;
+  grid.appendChild(allCard);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// QUIZ ENGINE
+// ══════════════════════════════════════════════════════════════════════
+function startQuiz(mode) {
+  currentMode = mode;
+  sessionCorrect = 0;
+  sessionTotal = 0;
+  batchCorrect = 0;
+  batchTotal = 0;
+
+  if (mode === "all") {
+    currentPool = [];
+    CHAPTER_KEYS.forEach(k => {
+      QUIZ_DATA[k].forEach(q => {
+        currentPool.push({ ...q, _srcChapter: k });
+      });
+    });
+  } else {
+    currentPool = QUIZ_DATA[mode].map(q => ({ ...q, _srcChapter: mode }));
+  }
+
+  document.getElementById("home-screen").style.display = "none";
+  const qs = document.getElementById("quiz-screen");
+  qs.style.display = "block";
+  qs.style.animation = "none";
+  qs.offsetHeight; // reflow
+  qs.style.animation = "fadeUp .4s ease";
+
+  document.getElementById("quiz-title").textContent =
+    mode === "all" ? "All Chapters" : CHAPTER_NAMES[mode];
+  updateStreakBadge();
+  showQuestion();
+}
+
+function showQuestion() {
+  answered = false;
+  document.getElementById("question-area").style.display = "block";
+  document.getElementById("session-summary").style.display = "none";
+
+  const prefix = currentMode === "all" ? "" : "";
+  currentQ = weightedPick(currentPool, "");
+  const key = currentQ._srcChapter + ":" + currentQ.id;
+
+  // Progress
+  const totalInPool = currentPool.length;
+  const seenInPool = currentPool.filter(q =>
+    state.seen[q._srcChapter + ":" + q.id]
+  ).length;
+  const pct = totalInPool ? Math.round(seenInPool / totalInPool * 100) : 0;
+  document.getElementById("progress-fill").style.width = pct + "%";
+
+  // Counter
+  const weight = getWeight(key);
+  let badge = "";
+  if (weight < 0.6) badge = " · <span style='color:var(--correct)'>✅ Mastered</span>";
+  else if (weight > 2) badge = " · <span style='color:var(--wrong)'>⚠ Needs Review</span>";
+  document.getElementById("q-counter").innerHTML =
+    `Question ${sessionTotal + 1} · Seen ${state.seen[key] || 0}× · Weight ${weight.toFixed(1)}${badge}`;
+
+  // Question text
+  document.getElementById("q-text").textContent = currentQ.question;
+
+  // Shuffle choices
+  const shuffled = [...currentQ.choices].sort(() => Math.random() - 0.5);
+  const choicesEl = document.getElementById("choices");
+  choicesEl.innerHTML = "";
+
+  const letters = "ABCDE";
+  shuffled.forEach((choice, i) => {
+    const btn = document.createElement("button");
+    btn.className = "choice-btn";
+    const choiceText = choice.replace(/^[a-e]\.\s*/, "");
+    btn.innerHTML = `<span class="letter">${letters[i]}</span><span>${choiceText}</span>`;
+    btn.dataset.choiceText = choiceText;
+    btn.dataset.originalChoice = choice;
+    btn.onclick = () => selectAnswer(btn, choiceText, shuffled);
+    choicesEl.appendChild(btn);
+  });
+
+  // Hide next btn
+  document.getElementById("next-btn").classList.remove("visible");
+
+  // Animate card entrance
+  const card = document.getElementById("question-card");
+  card.style.animation = "none";
+  card.offsetHeight;
+  card.style.animation = "fadeUp .35s ease";
+}
+
+function selectAnswer(btn, choiceText, allChoices) {
+  if (answered) return;
+  answered = true;
+
+  const key = currentQ._srcChapter + ":" + currentQ.id;
+  const correctText = currentQ.answer;
+
+  // Normalize for comparison
+  const normalize = s => s.replace(/^[a-e]\.\s*/, "").trim().toLowerCase().replace(/[.\s]+$/, "");
+  const isCorrect = normalize(choiceText) === normalize(correctText);
+
+  updateWeight(key, isCorrect);
+  sessionTotal++;
+  batchTotal++;
+  if (isCorrect) { sessionCorrect++; batchCorrect++; }
+  updateStreakBadge();
+
+  // Mark buttons
+  const buttons = document.querySelectorAll(".choice-btn");
+  buttons.forEach(b => {
+    b.classList.add("disabled");
+    const bText = b.dataset.choiceText;
+    if (normalize(bText) === normalize(correctText)) {
+      if (b === btn) {
+        b.classList.add("correct");
+      } else {
+        b.classList.add("reveal-correct");
+      }
+    }
+  });
+
+  if (!isCorrect) {
+    btn.classList.add("wrong");
+  }
+
+  document.getElementById("next-btn").classList.add("visible");
+}
+
+function nextQuestion() {
+  if (!answered) return;
+  // Check for batch summary every 10
+  if (batchTotal >= 10) {
+    showBatchSummary();
+    return;
+  }
+  showQuestion();
+}
+
+function showBatchSummary() {
+  document.getElementById("question-area").style.display = "none";
+  const summary = document.getElementById("session-summary");
+  summary.style.display = "block";
+  summary.style.animation = "none";
+  summary.offsetHeight;
+  summary.style.animation = "fadeUp .4s ease";
+
+  const pct = batchTotal ? Math.round(batchCorrect / batchTotal * 100) : 0;
+  document.getElementById("batch-stat").textContent = pct + "% Accuracy";
+  document.getElementById("batch-detail").textContent =
+    `${batchCorrect}/${batchTotal} correct in this batch · ${sessionCorrect}/${sessionTotal} overall this session`;
+}
+
+function closeSummary() {
+  batchCorrect = 0;
+  batchTotal = 0;
+  showQuestion();
+}
+
+function updateStreakBadge() {
+  document.getElementById("streak-badge").textContent = "🔥 " + state.streak;
+}
+
+function goHome() {
+  document.getElementById("quiz-screen").style.display = "none";
+  document.getElementById("home-screen").style.display = "block";
+  renderHome();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// STATS
+// ══════════════════════════════════════════════════════════════════════
+function openStats() {
+  const panel = document.getElementById("stats-panel");
+  const overallPct = state.totalAnswered
+    ? Math.round(state.totalCorrect / state.totalAnswered * 100) : 0;
+
+  let html = `
+    <h2>Statistics <button class="close-btn" onclick="closeStats()">✕</button></h2>
+    <div class="stat-row"><span class="stat-label">Total Answered</span><span class="stat-value">${state.totalAnswered}</span></div>
+    <div class="stat-row"><span class="stat-label">Overall Accuracy</span><span class="stat-value">${overallPct}%</span></div>
+    <div class="stat-row"><span class="stat-label">Current Streak</span><span class="stat-value">🔥 ${state.streak}</span></div>
+    <div class="stat-row"><span class="stat-label">Best Streak</span><span class="stat-value">⭐ ${state.bestStreak}</span></div>
+  `;
+
+  CHAPTER_KEYS.forEach(key => {
+    const qs = QUIZ_DATA[key];
+    let chSeen = 0, chCorrect = 0, chMastered = 0;
+    qs.forEach(q => {
+      const k = key + ":" + q.id;
+      chSeen += state.seen[k] || 0;
+      chCorrect += state.correct[k] || 0;
+      if (getWeight(k) < 0.6) chMastered++;
+    });
+    const chPct = chSeen ? Math.round(chCorrect / chSeen * 100) : 0;
+    html += `
+      <div class="chapter-stat">
+        <h4>${CHAPTER_NAMES[key]}</h4>
+        <div class="stat-row"><span class="stat-label">Accuracy</span><span class="stat-value">${chPct}%</span></div>
+        <div class="stat-row"><span class="stat-label">Mastered</span><span class="stat-value" style="color:var(--correct)">${chMastered}/${qs.length}</span></div>
+        <div class="stat-row"><span class="stat-label">Times Studied</span><span class="stat-value">${chSeen}</span></div>
+      </div>
+    `;
+  });
+
+  html += `<button class="reset-btn" onclick="resetAll()">🗑 Reset All Progress</button>`;
+  panel.innerHTML = html;
+  document.getElementById("stats-overlay").classList.add("open");
+}
+function closeStats() { document.getElementById("stats-overlay").classList.remove("open"); }
+function resetAll() {
+  if (confirm("Reset ALL progress? This cannot be undone.")) {
+    state = freshState();
+    saveState();
+    closeStats();
+    renderHome();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ══════════════════════════════════════════════════════════════════════
+document.addEventListener("keydown", e => {
+  // Only when quiz screen is visible
+  if (document.getElementById("quiz-screen").style.display !== "block") return;
+  // If summary showing, enter closes it
+  if (document.getElementById("session-summary").style.display === "block") {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeSummary(); }
+    return;
+  }
+
+  const keyMap = { "1": 0, "2": 1, "3": 2, "4": 3, "5": 4,
+                   "a": 0, "b": 1, "c": 2, "d": 3, "e": 4 };
+  const idx = keyMap[e.key.toLowerCase()];
+
+  if (idx !== undefined && !answered) {
+    const btns = document.querySelectorAll(".choice-btn");
+    if (btns[idx]) btns[idx].click();
+  }
+
+  if ((e.key === "Enter" || e.key === " ") && answered) {
+    e.preventDefault();
+    nextQuestion();
+  }
+});
+
+// Close stats on overlay click
+document.getElementById("stats-overlay").addEventListener("click", e => {
+  if (e.target === e.currentTarget) closeStats();
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════════
+renderHome();
+</script>
+</body>
+</html>
