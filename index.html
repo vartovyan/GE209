@@ -442,7 +442,9 @@ let answered = false;
 let sessionCorrect = 0;
 let sessionTotal = 0;
 let batchCorrect = 0;
-let batchTotal = 0;
+let batchAnswered = 0;
+let batchNewShown = 0;
+let batchReviewShown = 0;
 let questionShownAt = 0;
 let recentTimes = [];
 
@@ -574,7 +576,9 @@ function startQuiz(mode) {
   sessionCorrect = 0;
   sessionTotal = 0;
   batchCorrect = 0;
-  batchTotal = 0;
+  batchAnswered = 0;
+  batchNewShown = 0;
+  batchReviewShown = 0;
 
   let keys;
   if (mode === "all-midterm") keys = MIDTERM_KEYS;
@@ -610,8 +614,30 @@ function showQuestion() {
   document.getElementById("question-area").style.display = "block";
   document.getElementById("session-summary").style.display = "none";
 
-  currentQ = weightedPick(currentPool);
+  // Smart interleave: 5 new + 5 review per batch of 10
+  const unseenPool = currentPool.filter(q => !state.seen[q._srcChapter + ":" + q.id]);
+  const seenPool = currentPool.filter(q => state.seen[q._srcChapter + ":" + q.id]);
+  const batchShown = batchNewShown + batchReviewShown;
+
+  if (unseenPool.length > 0 && seenPool.length > 0) {
+    // Both available: interleave up to 5 each
+    const wantNew = batchNewShown < 5;
+    const wantReview = batchReviewShown < 5;
+    if (wantNew && (!wantReview || batchNewShown <= batchReviewShown)) {
+      // Pick a random unseen question
+      currentQ = unseenPool[Math.floor(Math.random() * unseenPool.length)];
+    } else {
+      currentQ = weightedPick(seenPool);
+    }
+  } else if (unseenPool.length > 0) {
+    currentQ = unseenPool[Math.floor(Math.random() * unseenPool.length)];
+  } else {
+    currentQ = weightedPick(seenPool.length > 0 ? seenPool : currentPool);
+  }
+
   const key = currentQ._srcChapter + ":" + currentQ.id;
+  const isNew = !state.seen[key];
+  if (isNew) batchNewShown++; else batchReviewShown++;
 
   // Progress
   const totalInPool = currentPool.length;
@@ -709,7 +735,7 @@ function selectAnswer(btn, choiceText) {
 
   updateWeight(key, isCorrect);
   sessionTotal++;
-  batchTotal++;
+  batchAnswered++;
   if (isCorrect) { sessionCorrect++; batchCorrect++; }
   updateStreakBadge();
 
@@ -729,7 +755,8 @@ function selectAnswer(btn, choiceText) {
 
 function nextQuestion() {
   if (!answered) return;
-  if (batchTotal >= 10) { showBatchSummary(); return; }
+  const batchShown = batchNewShown + batchReviewShown;
+  if (batchShown >= 10) { showBatchSummary(); return; }
   showQuestion();
 }
 
@@ -741,15 +768,18 @@ function showBatchSummary() {
   summary.offsetHeight;
   summary.style.animation = "fadeUp .4s ease";
 
-  const pct = batchTotal ? Math.round(batchCorrect / batchTotal * 100) : 0;
+  const pct = batchAnswered ? Math.round(batchCorrect / batchAnswered * 100) : 0;
   document.getElementById("batch-stat").textContent = pct + "% Accuracy";
+  const studiedNote = batchNewShown > 0 ? ` · ${batchNewShown} new studied` : "";
   document.getElementById("batch-detail").textContent =
-    `${batchCorrect}/${batchTotal} correct in this batch · ${sessionCorrect}/${sessionTotal} overall this session`;
+    `${batchCorrect}/${batchAnswered} correct${studiedNote} · ${sessionCorrect}/${sessionTotal} overall this session`;
 }
 
 function closeSummary() {
   batchCorrect = 0;
-  batchTotal = 0;
+  batchAnswered = 0;
+  batchNewShown = 0;
+  batchReviewShown = 0;
   showQuestion();
 }
 
