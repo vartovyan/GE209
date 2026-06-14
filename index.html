@@ -200,6 +200,19 @@ body::before{
 }
 .choice-btn.disabled.reveal-correct .letter{background:var(--correct);color:#064e3b}
 
+/* First-seen: golden highlight for the answer */
+.choice-btn.first-seen-answer{
+  opacity:1!important;
+  background:rgba(251,191,36,.1)!important;border-color:rgba(251,191,36,.45)!important;
+  box-shadow:0 0 18px rgba(251,191,36,.2);
+}
+.choice-btn.first-seen-answer .letter{background:#fbbf24;color:#78350f}
+.first-seen-banner{
+  text-align:center;padding:8px 16px;margin-bottom:16px;border-radius:var(--radius-sm);
+  background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);
+  color:#fbbf24;font-size:.82rem;font-weight:700;
+}
+
 @keyframes shake{
   0%,100%{transform:translateX(0)}
   20%{transform:translateX(-6px)}
@@ -593,10 +606,14 @@ function showQuestion() {
   const pct = totalInPool ? Math.round(seenInPool / totalInPool * 100) : 0;
   document.getElementById("progress-fill").style.width = pct + "%";
 
+  // First-seen detection
+  const isFirstSeen = !state.seen[key];
+
   // Counter
   const weight = getWeight(key);
   let badge = "";
-  if (weight < 0.6) badge = " · <span style='color:var(--correct)'>✅ Mastered</span>";
+  if (isFirstSeen) badge = " · <span style='color:#fbbf24'>📖 First Time</span>";
+  else if (weight < 0.6) badge = " · <span style='color:var(--correct)'>✅ Mastered</span>";
   else if (weight > 2) badge = " · <span style='color:var(--wrong)'>⚠ Needs Review</span>";
   document.getElementById("q-counter").innerHTML =
     `Question ${sessionTotal + 1} · Seen ${state.seen[key] || 0}× · Weight ${weight.toFixed(1)}${badge}`;
@@ -605,9 +622,20 @@ function showQuestion() {
   document.getElementById("q-text").textContent = currentQ.question;
 
   // Shuffle choices
+  const normalize = s => s.replace(/^[a-e]\.\s*/, "").trim().toLowerCase().replace(/[.\s]+$/, "");
   const shuffled = [...currentQ.choices].sort(() => Math.random() - 0.5);
   const choicesEl = document.getElementById("choices");
   choicesEl.innerHTML = "";
+
+  // First-seen banner
+  const existingBanner = document.querySelector(".first-seen-banner");
+  if (existingBanner) existingBanner.remove();
+  if (isFirstSeen) {
+    const banner = document.createElement("div");
+    banner.className = "first-seen-banner";
+    banner.textContent = "📖 NEW — Study the correct answer, then press Next";
+    choicesEl.before(banner);
+  }
 
   const letters = "ABCDE";
   shuffled.forEach((choice, i) => {
@@ -616,11 +644,28 @@ function showQuestion() {
     const choiceText = choice.replace(/^[a-e]\.\s*/, "");
     btn.innerHTML = `<span class="letter">${letters[i]}</span><span>${choiceText}</span>`;
     btn.dataset.choiceText = choiceText;
-    btn.onclick = () => selectAnswer(btn, choiceText);
+
+    if (isFirstSeen) {
+      // Highlight the correct answer, disable all buttons
+      btn.classList.add("disabled");
+      if (normalize(choiceText) === normalize(currentQ.answer)) {
+        btn.classList.add("first-seen-answer");
+      }
+    } else {
+      btn.onclick = () => selectAnswer(btn, choiceText);
+    }
     choicesEl.appendChild(btn);
   });
 
-  document.getElementById("next-btn").classList.remove("visible");
+  if (isFirstSeen) {
+    // Mark as seen but don't affect weight or stats
+    state.seen[key] = (state.seen[key] || 0) + 1;
+    saveState();
+    answered = true;
+    document.getElementById("next-btn").classList.add("visible");
+  } else {
+    document.getElementById("next-btn").classList.remove("visible");
+  }
 
   const card = document.getElementById("question-card");
   card.style.animation = "none";
