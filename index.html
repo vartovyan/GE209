@@ -155,6 +155,16 @@ body::before{
   background:linear-gradient(135deg,rgba(251,191,36,.15),rgba(245,158,11,.08));
   border:1px solid rgba(251,191,36,.2);color:#fbbf24;
 }
+.speed-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 14px;border-radius:20px;font-size:.82rem;font-weight:700;
+  background:linear-gradient(135deg,rgba(56,189,248,.12),rgba(14,165,233,.06));
+  border:1px solid rgba(56,189,248,.2);color:#38bdf8;
+  transition:all var(--transition);
+}
+.speed-badge.fast{color:#34d399;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.12),rgba(52,211,153,.05))}
+.speed-badge.medium{color:#fbbf24;border-color:rgba(251,191,36,.3);background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(251,191,36,.05))}
+.speed-badge.slow{color:#f87171;border-color:rgba(248,113,113,.3);background:linear-gradient(135deg,rgba(248,113,113,.12),rgba(248,113,113,.05))}
 
 .progress-wrap{
   width:100%;height:5px;border-radius:5px;background:rgba(255,255,255,.06);
@@ -364,7 +374,10 @@ body::before{
         Home
       </button>
       <div id="quiz-title" style="font-weight:700;font-size:.95rem;color:var(--text-bright)"></div>
-      <div class="streak-badge" id="streak-badge">🔥 0</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="speed-badge" id="speed-badge">⚡ --</div>
+        <div class="streak-badge" id="streak-badge">🔥 0</div>
+      </div>
     </div>
     <div class="progress-wrap"><div class="progress-fill" id="progress-fill"></div></div>
 
@@ -430,6 +443,8 @@ let sessionCorrect = 0;
 let sessionTotal = 0;
 let batchCorrect = 0;
 let batchTotal = 0;
+let questionShownAt = 0;
+let recentTimes = [];
 
 function freshState() {
   return {
@@ -665,6 +680,7 @@ function showQuestion() {
     document.getElementById("next-btn").classList.add("visible");
   } else {
     document.getElementById("next-btn").classList.remove("visible");
+    questionShownAt = Date.now();
   }
 
   const card = document.getElementById("question-card");
@@ -676,6 +692,14 @@ function showQuestion() {
 function selectAnswer(btn, choiceText) {
   if (answered) return;
   answered = true;
+
+  // Track speed
+  if (questionShownAt) {
+    const elapsed = (Date.now() - questionShownAt) / 1000;
+    recentTimes.push(elapsed);
+    if (recentTimes.length > 10) recentTimes.shift();
+    updateSpeedBadge();
+  }
 
   const key = currentQ._srcChapter + ":" + currentQ.id;
   const correctText = currentQ.answer;
@@ -731,6 +755,18 @@ function closeSummary() {
 
 function updateStreakBadge() {
   document.getElementById("streak-badge").textContent = "🔥 " + state.streak;
+}
+
+function updateSpeedBadge() {
+  const badge = document.getElementById("speed-badge");
+  if (recentTimes.length === 0) { badge.textContent = "⚡ --"; return; }
+  const avg = recentTimes.reduce((a, b) => a + b, 0) / recentTimes.length;
+  const qpm = (60 / avg).toFixed(1);
+  badge.className = "speed-badge";
+  if (avg <= 5) badge.classList.add("fast");
+  else if (avg <= 12) badge.classList.add("medium");
+  else badge.classList.add("slow");
+  badge.textContent = "⚡ " + avg.toFixed(1) + "s · " + qpm + "/min";
 }
 
 function goHome() {
